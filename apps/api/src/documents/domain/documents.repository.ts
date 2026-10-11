@@ -74,6 +74,8 @@ export abstract class DocumentsRepository {
   abstract createTemplate(actor: DocumentActor, input: CreateTemplateInput): Promise<DocumentTemplateRecord>;
   abstract updateTemplate(actor: DocumentActor, id: string, input: UpdateTemplateInput): Promise<DocumentTemplateRecord | null>;
   abstract listSignatures(scope: CompanyScope, documentId: string): Promise<SignatureRecord[]>;
+  /** Single signature lookup inside the caller scope (ownership gate for manual signing). */
+  abstract getSignature(scope: CompanyScope, signatureId: string): Promise<SignatureRecord | null>;
   abstract createSignature(actor: DocumentActor, input: CreateSignatureInput & { documentId: string }): Promise<SignatureRecord>;
   /** Manual signature transition PENDING -> SIGNED|REJECTED, append-only evidence. */
   abstract resolveSignature(actor: DocumentActor, signatureId: string, decision: 'SIGNED' | 'REJECTED', evidence: Record<string, unknown>): Promise<SignatureRecord | null>;

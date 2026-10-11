@@ -237,6 +237,13 @@ export class PrismaDocumentsRepository extends DocumentsRepository {
     }
   }
 
+  getSignature(scope: { tenantId: string; companyId: string }, signatureId: string): Promise<SignatureRecord | null> {
+    return this.database.withScope(scope, (tx) => tx.documentSignature.findFirst({
+      where: { tenantId: scope.tenantId, companyId: scope.companyId, id: signatureId },
+      select: signatureShape,
+    }).then((signature) => (signature ? signature as unknown as SignatureRecord : null)));
+  }
+
   resolveSignature(actor: { tenantId: string; companyId: string; id: string }, signatureId: string, decision: 'SIGNED' | 'REJECTED', evidence: Record<string, unknown>): Promise<SignatureRecord | null> {
     return this.database.withScope(actor, async (tx) => {
       const where = { tenantId: actor.tenantId, companyId: actor.companyId, id: signatureId };

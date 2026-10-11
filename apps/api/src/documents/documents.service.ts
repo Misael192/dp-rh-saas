@@ -236,10 +236,24 @@ export class DocumentsService {
     catch (error) { return this.rethrow(error); }
   }
 
-  /** Manual signature: staff records that a person signed offline/physically. */
+  /** Manual signature: staff records an offline signing; the linked user (or
+   * the employee's own account) may sign their pending item without being staff. */
   async sign(user: AuthUser, signatureId: string, evidence: Record<string, unknown>) {
-    this.requireStaff(user);
-    const payload = { ...evidence, recordedBy: 'staff-manual', at: new Date().toISOString() };
+    const existing = await this.documents.getSignature(this.scope(user), signatureId);
+    if (!existing) throw new NotFoundException('Assinatura não encontrada.');
+    if (!(user.role === 'ADMIN' || user.role === 'HR')) {
+      const isOwnSignature = existing.signerUserId === user.id;
+      const document = await this.documents.getDocument(this.scope(user), existing.documentId);
+      const isEmployeeRoleForOwnDoc = existing.role === 'EMPLOYEE' && Boolean(document) && this.canAccessDocument(user, document!);
+      if (!isOwnSignature && !isEmployeeRoleForOwnDoc) throw new ForbiddenException('Esta assinatura pertence a outra pessoa.');
+    }
+    const payload = {
+      method: 'manual',
+      userAgent: typeof evidence.userAgent === 'string' ? evidence.userAgent.slice(0, 200) : undefined,
+      ...evidence,
+      sha256: typeof evidence.sha256 === 'string' ? evidence.sha256 : undefined,
+      recordedBy: 'staff-manual', at: new Date().toISOString(),
+    };
     try {
       const signature = await this.documents.resolveSignature(this.actor(user), signatureId, 'SIGNED', payload);
       if (!signature) throw new NotFoundException('Assinatura não encontrada.');

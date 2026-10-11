@@ -71,3 +71,26 @@ export async function api<T>(path: string, options: RequestOptions = {}): Promis
 
 export const errorMessage = (error: unknown) => error instanceof Error ? error.message : "Ocorreu um erro inesperado. Tente novamente.";
 export function clearApiSession() { csrfToken = null; }
+
+/** Multipart upload with the same CSRF/refresh semantics as api(). */
+export async function apiUpload<T>(path: string, form: FormData, options: { signal?: AbortSignal } = {}): Promise<T> {
+  const send = async (): Promise<Response> => fetch(`/api/v1${path}`, {
+    method: "POST", credentials: "same-origin", cache: "no-store",
+    headers: { "x-csrf-token": await getCsrfToken() },
+    body: form, signal: options.signal,
+  });
+  let response = await send();
+  if (response.status === 403) {
+    const error = await response.json().catch(() => null) as { code?: string } | null;
+    if (error?.code === "CSRF_REJECTED") { csrfToken = null; response = await send(); }
+  }
+  if (response.status === 401 && await refreshSession()) response = await send();
+  const data: unknown = response.status === 204 ? undefined : await response.json().catch(() => undefined);
+  if (!response.ok) {
+    const error = data as { message?: string | string[]; code?: string } | undefined;
+    const message = Array.isArray(error?.message) ? error.message.join(". ") : error?.message;
+    if (response.status === 401) window.dispatchEvent(new Event("peopleflow:session-expired"));
+    throw new ApiError(response.status, message || "Não foi possível concluir o envio.", error?.code);
+  }
+  return data as T;
+}

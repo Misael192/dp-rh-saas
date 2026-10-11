@@ -107,7 +107,7 @@ describe('storage adapter helpers', () => {
     expect(first.objectKey).not.toBe(second.objectKey);
     const segments = first.objectKey.slice(prefix.length).split('/');
     expect(segments[0]).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
-    expect(segments[1]).toBe('evil_dir_my_file.pdf');
+    expect(segments[1]).toBe('my_file.pdf');
     expect(first.objectKey).not.toContain('..');
   });
 });
@@ -145,6 +145,10 @@ class MemoryDocumentsRepository {
   async createTemplate() { throw new Error('not needed'); }
   async updateTemplate() { throw new Error('not needed'); }
   async listSignatures(_scope: any, documentId: string) { return this.signatures.filter((s) => s.documentId === documentId); }
+  async getSignature(scope: any, signatureId: string) {
+    const document = this.documents.find((d) => d.tenantId === scope.tenantId && d.companyId === scope.companyId && d.signatures.some((s: any) => s.id === signatureId));
+    return document ? document.signatures.find((s: any) => s.id === signatureId) ?? null : null;
+  }
   async createSignature(actor: any, input: any) {
     const document = this.documents.find((d) => d.id === input.documentId);
     if (!document?.currentVersion) throw new NoCurrentVersionError();
