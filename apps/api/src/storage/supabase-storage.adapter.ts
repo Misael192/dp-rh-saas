@@ -4,7 +4,7 @@ import { AppConfig } from '../common/config';
 import { DownloadDescriptor, StorageAdapter, StoredFileMetadata, UploadResult } from './storage.adapter';
 
 interface SupabaseResponse {
-  error?: { message?: string };
+  error?: { message?: string } | string;
   path?: string;
 }
 
@@ -40,7 +40,7 @@ export class SupabaseStorageAdapter extends StorageAdapter {
     const response = await fetch(`${this.baseUrl}/storage/v1/object/${encodeURIComponent(this.bucket)}/${objectKey}`, {
       method: 'POST',
       headers: { ...this.headers(), 'content-type': input.contentType, 'x-upsert': 'false' },
-      body: input.body,
+      body: new Uint8Array(input.body),
       signal: AbortSignal.timeout(60_000),
     });
     const payload = (await response.json().catch(() => ({}))) as SupabaseResponse;

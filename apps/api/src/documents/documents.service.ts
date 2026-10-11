@@ -3,12 +3,12 @@ import { BadRequestException, ConflictException, ForbiddenException, HttpExcepti
 import type { AuthUser } from '../auth/auth.types';
 import { AppConfig } from '../common/config';
 import { allowedContentType, StorageAdapter } from '../storage/storage.adapter';
-import { signDownloadToken } from '../storage/download-token';
+import { signDownloadToken, verifyDownloadToken } from '../storage/download-token';
 import type {
   AddVersionInput, CreateDocumentInput, CreateSignatureInput, CreateTemplateInput,
   DocumentQuery, UpdateDocumentInput, UpdateTemplateInput,
 } from './document.schemas';
-import { DocumentsRepository } from './domain/documents.repository';
+import { DocumentsRepository, type DocumentRecord } from './domain/documents.repository';
 import {
   NoCurrentVersionError, NotFoundInScopeError, PublishWithoutVersionError, SignatureAlreadyResolvedError,
 } from './infrastructure/prisma-documents.repository';

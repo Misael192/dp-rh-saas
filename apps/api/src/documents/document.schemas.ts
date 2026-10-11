@@ -30,7 +30,7 @@ export const updateDocumentSchema = z.object({
   title: z.string().trim().min(2).max(200).optional(),
   status: z.enum(['PUBLISHED', 'ARCHIVED']).optional(),
   employeeId: uuidSchema.nullable().optional(),
-}).refine((value) => Object.keys(value).length > 0, 'Informe pelo menos um campo.').strict();
+}).strict().refine((value) => Object.keys(value).length > 0, 'Informe pelo menos um campo.');
 
 export const addVersionSchema = z.object({
   note: z.string().trim().max(500).optional(),
@@ -72,7 +72,7 @@ export const updateTemplateSchema = z.object({
   description: z.string().trim().max(500).nullable().optional(),
   defaultFileName: z.string().trim().min(3).max(255).optional(),
   isActive: z.boolean().optional(),
-}).refine((value) => Object.keys(value).length > 0, 'Informe pelo menos um campo.').strict();
+}).strict().refine((value) => Object.keys(value).length > 0, 'Informe pelo menos um campo.');
 
 export const downloadTokenSchema = z.object({
   token: z.string().min(32).max(4096),

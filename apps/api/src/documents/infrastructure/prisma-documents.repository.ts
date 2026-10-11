@@ -15,12 +15,10 @@ const fileShape = {
   contentType: true, sizeBytes: true, sha256: true, deletedAt: true, createdAt: true,
 } satisfies Prisma.FileObjectSelect;
 
-const versionInclude = {
-  select: {
-    id: true, documentId: true, versionNumber: true, fileObjectId: true, note: true,
-    createdBy: true, createdAt: true, fileObject: { select: fileShape },
-  },
-} satisfies Prisma.DocumentVersionInclude;
+const versionSelect = {
+  id: true, documentId: true, versionNumber: true, fileObjectId: true, note: true,
+  createdBy: true, createdAt: true, fileObject: { select: fileShape },
+} satisfies Prisma.DocumentVersionSelect;
 
 const signatureShape = {
   id: true, documentId: true, versionId: true, signerUserId: true, signerName: true,
@@ -59,7 +57,7 @@ export class PrismaDocumentsRepository extends DocumentsRepository {
       id: true, employeeId: true, templateId: true, title: true, kind: true, status: true,
       currentVersionId: true, createdAt: true, updatedAt: true,
       employee: { select: { userId: true } },
-      currentVersion: { select: { ...versionInclude.select, signatures: { select: signatureShape } } },
+      currentVersion: { select: { ...versionSelect, signatures: { select: signatureShape } } },
     } satisfies Prisma.DocumentSelect;
   }
 
@@ -86,7 +84,7 @@ export class PrismaDocumentsRepository extends DocumentsRepository {
       where: { ...scope, id },
       select: {
         ...this.documentSelect(),
-        ...(includeVersions ? { versions: { orderBy: { versionNumber: 'desc' }, ...versionInclude } } : {}),
+        ...(includeVersions ? { versions: { orderBy: { versionNumber: 'desc' }, ...versionSelect } } : {}),
         signatures: { orderBy: [{ createdAt: 'asc' }, { id: 'asc' }], select: signatureShape },
       },
     }).then((document) => (document ? { ...document, employeeUserId: document.employee?.userId ?? null } as unknown as DocumentRecord : null)));
@@ -227,7 +225,7 @@ export class PrismaDocumentsRepository extends DocumentsRepository {
           ? await tx.user.findFirst({ where: { tenantId: actor.tenantId, companyId: actor.companyId, id: data.signerUserId }, select: { name: true } }).then((user) => user?.name ?? 'Assinante')
           : 'Assinante');
         const signature = await tx.documentSignature.create({
-          data: { tenantId: actor.tenantId, companyId: actor.companyId, documentId, versionId: document.currentVersionId, signerName, role: data.role, signerUserId: data.signerUserId ?? null, evidence: {} },
+          data: { tenantId: actor.tenantId, companyId: actor.companyId, documentId, versionId: document.currentVersionId, signerName: signerName ?? 'Assinante', role: data.role, signerUserId: data.signerUserId ?? null, evidence: {} },
           select: signatureShape,
         });
         await this.audit(tx, actor, 'document_signature.pending', signature.id, { documentId, role: data.role });
