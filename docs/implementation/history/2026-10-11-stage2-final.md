@@ -1,0 +1,33 @@
+# Etapa 2 — Registro de 11/10/2026
+
+## Estado
+
+A implementação de documentos e storage está mergeada na `main` em `2ce60b420b6f1ed727df8292aaa66145f87af02e` (PR #1). Não houve implantação em produção. O PR #2, `hotfix/stage2-typecheck-and-docs`, permanece aberto e não deve ser mergeado sem aprovação explícita.
+
+## Cronologia verificada
+
+| Commit | Decisão/evidência |
+| --- | --- |
+| `05874738e19e4e0a08209f7e7777ebf960991a6d` | Implementação Stage 2; commit intermediário incluiu acidentalmente dependências/artefatos gerados (`node_modules`, 4.633 arquivos). |
+| `d78dfb7466084d06ad7b2af5c2432c799daa8aa4` | Interrompeu o rastreamento de `node_modules` e artefatos de build; não reescrever o histórico publicado. |
+| `ff67e244c0166f8ec50ed7a61d2430cee02914e4` | Commit de documentação/configuração Stage 2 no branch da implementação. |
+| `f99d6ce8198223d8b59558f7e7777ebf960991a6d` | Commit de implementação de documentos Stage 2 no branch da implementação. |
+| `2ce60b420b6f1ed727df8292aaa66145f87af02e` | Merge do PR #1 na `main`; CI encontrou `TS2339` pela ausência de `signerUserId` no contrato `SignatureView`. |
+| `a2fe61f5278a298e5ecc531564046e42f877cf47` | Commit do PR #2: adicionou `signerUserId` nullable ao contrato/serialização e documentação faltante. Typecheck local e build local passaram. CI passou pelo typecheck, mas falhou em um teste unitário por fixture com tenant/empresa diferentes. |
+
+## Decisões e desvios
+
+- Não executar `reset --hard`, rebase destrutivo ou force-push; preservar o histórico e corrigir no branch aberto.
+- A rota entregue é `apps/web/src/app/(workspace)/documentos/page.tsx` (`/documentos`). Os testes têm nomes `documents.test.ts` e `documents.integration.test.ts`.
+- `infra/scripts/check-test-database.mjs` restringe os testes Compose a `postgres-test/peopleflow_test` e role runtime `peopleflow_app`. Eventual contorno fora do Compose é somente local; não é prova de RLS nem deve enfraquecer a CI.
+- A alteração unitária do hotfix alinha os usuários no mesmo tenant/empresa e mantém IDs distintos, para que a expectativa de visibilidade por usuário seja válida.
+- O `.vscode/` não rastreado encontrado no checkout foi preservado e não incluído no hotfix.
+
+## Evidências e pendências
+
+- `npm test`: 23/23 passou localmente depois de corrigir o fixture.
+- `npm run typecheck`: PASS em API, web, contracts e database após o ajuste do fixture/documentação.
+- `npm run build`: PASS; Prisma Client, contracts, API e Next.js; rota `/documentos` incluída.
+- CI do PR #2 no SHA `a2fe61f`: 22 testes passaram, um falhou (`EMPLOYEE only sees own documents via listVisibleToUser`, `expected [] to deeply equal [Array(1)]`). Novo run após o ajuste do fixture ainda pendente.
+- Integração PostgreSQL/RLS: oito cenários existem, mas não foram executados novamente neste hotfix.
+- Aguardar CI remota verde após o novo push, review e autorização explícita antes do merge. Não iniciar a Etapa 3 nem implantar em produção.

@@ -27,9 +27,9 @@ Next 15.5.27, React 19, Nest 11, Prisma 6.19.3 com adapter oficial PrismaPg, Nod
 
 ## Etapa 2 — documentos e storage
 
-**Status:** Mergeada na main, hotfix aplicado para corrigir typecheck de `SignatureView` e adicionar documentação faltante. O hotfix está no branch `hotfix/stage2-typecheck-and-docs`; aguardar revisão e aprovação explícita antes do merge. A Etapa 2 não foi implantada em produção.
+**Status:** Mergeada na main; hotfix em andamento para corrigir typecheck de `SignatureView`, completar a documentação e corrigir falha unitária da CI. O hotfix está no branch `hotfix/stage2-typecheck-and-docs`; aguardar nova CI, revisão e aprovação explícita antes do merge. A Etapa 2 não foi implantada em produção.
 
-O PR #1 foi mergeado em `2ce60b420b6f1ed727df8292aaa66145f87af02e`. O workflow desse commit falhou no typecheck: `apps/web/src/components/documents-view.tsx` acessava `signerUserId`, ausente no contrato `SignatureView`. Este hotfix inclui o campo nullable no contrato e o serializa em `signatureView`. A execução local de `npm run typecheck` e `npm run build` passou em 2026-10-11; detalhes, entregáveis e desvios estão em [STAGE-2.md](STAGE-2.md). A CI do merge original não validou os testes posteriores ao typecheck; não marcar a execução de integração como repetida neste hotfix.
+O PR #1 foi mergeado em `2ce60b420b6f1ed727df8292aaa66145f87af02e`. O workflow desse commit falhou no typecheck: `apps/web/src/components/documents-view.tsx` acessava `signerUserId`, ausente no contrato `SignatureView`. O commit `a2fe61f` do hotfix acrescentou o campo nullable ao contrato e ao serializador; seu workflow passou pelo typecheck, mas falhou em `npm test`, pois o fixture de `EMPLOYEE only sees own documents` usava tenant/empresa diferentes dos do documento. O fixture foi corrigido localmente para exercitar usuários distintos dentro do mesmo escopo. Após o ajuste, `npm test` passou 23/23, `npm run typecheck` passou em todos os workspaces e `npm run build` passou em 2026-10-11. A CI remota ainda precisa de novo run após o push. Detalhes e cronologia estão em [STAGE-2.md](STAGE-2.md) e [history/2026-10-11-stage2-final.md](history/2026-10-11-stage2-final.md). A integração RLS não foi repetida neste hotfix.
 
 ## Transferência e validação no novo destino
 
@@ -81,4 +81,4 @@ O workflow foi adaptado à raiz e validado sintaticamente, mas ainda não teve e
 
 ## Próximo passo exato
 
-**Aguardar revisão e aprovação explícita para merge do PR de hotfix da Etapa 2.** Não fazer merge nem iniciar a Etapa 3 antes de autorização. Preserve o histórico e todas as alterações locais. Antes de qualquer implantação de produção, confirmar CI, credenciais/ingresso, backup externo, restauração e operação no destino definitivo. Não marcar módulos planejados como entregues.
+**Concluir validações locais, publicar o ajuste do teste no mesmo PR e aguardar CI remota verde, revisão e aprovação explícita para merge do PR de hotfix da Etapa 2.** Não fazer merge nem iniciar a Etapa 3 antes de autorização. Preserve o histórico e todas as alterações locais. Antes de qualquer implantação de produção, confirmar CI, credenciais/ingresso, backup externo, restauração e operação no destino definitivo. Não marcar módulos planejados como entregues.

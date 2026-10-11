@@ -30,9 +30,12 @@ No hotfix local, em 2026-10-11:
 | `npm run build -w @peopleflow/contracts` | PASS; necessário antes do typecheck em checkout limpo porque o workspace web consome os tipos compilados de `dist`. |
 | `npm run typecheck` | PASS em API, web, contracts e database, depois da geração do client e do build de contracts. |
 | `npm run build` | PASS; geração Prisma, contracts, API e Next.js. A rota `/documentos` foi incluída no build. |
+| `npm test` após corrigir o fixture de visibilidade | PASS; 23/23 casos unitários em 2026-10-11. |
 | Testes de integração/RLS | Os oito cenários estão presentes, mas não foram executados novamente neste hotfix. O workflow do merge falhou antes dessa etapa. |
 
 `npm ci` e a geração do Prisma Client foram necessários porque o `node_modules` local não correspondia ao lockfile/schema depois do pull. Em instalação limpa, gere também `packages/contracts/dist` antes de executar `npm run typecheck`; `npm run build` da raiz compila os workspaces na ordem necessária.
+
+O workflow do PR #2 (`a2fe61f`) passou pelo typecheck, mas falhou em `npm test`: 22/23 casos passaram e o fixture `EMPLOYEE only sees own documents via listVisibleToUser` esperava um documento criado em tenant/empresa diferentes do usuário. A implementação real filtra pelo escopo tenant+empresa antes da visibilidade por funcionário/assinatura. O fixture foi alinhado ao mesmo escopo; a suíte local passou 23/23. A CI remota deverá rodar novamente após o push deste ajuste; ainda não há evidência de CI verde nem de execução local nova da integração RLS.
 
 ## Desvios e decisões
 
@@ -41,6 +44,7 @@ No hotfix local, em 2026-10-11:
 - **Incidente `node_modules`:** o commit intermediário `0587473` adicionou acidentalmente `node_modules` (4.633 arquivos, mais de 1,3 milhão de linhas). A árvore do commit mergeado não contém esse diretório; dependências devem ser restauradas com `npm ci`, nunca versionadas.
 - **Checker do banco de teste:** `infra/scripts/check-test-database.mjs` é deliberadamente específico do Compose e exige host `postgres-test`, banco `peopleflow_test` e role runtime `peopleflow_app`. O contorno usado no ambiente local para esse checker foi local, não está versionado e não substitui os checks do Compose/CI com banco isolado e role sem privilégios.
 - **Typecheck do merge:** CI detectou a ausência de `signerUserId` no contrato. O hotfix acrescenta o campo nullable e o serializa como `signature.signerUserId ?? null`; o typecheck local e o build passam. A correção só estará na `main` depois de aprovada e mergeada.
+- **Fixture da CI do hotfix:** o teste unitário atribuía IDs de tenant/empresa aleatórios ao funcionário e ao administrador/documento. A correção preserva o escopo da empresa e varia somente o ID do usuário, de modo que a verificação realmente testa o isolamento individual.
 - **Credenciais de storage:** `.env.example` contém somente exemplos comentados. Chaves Supabase/AWS e segredo HMAC devem ser fornecidos por configuração privada/secret manager; não registrar valores reais em documentação ou logs.
 
 ## Próximo passo
