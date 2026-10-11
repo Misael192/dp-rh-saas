@@ -1,0 +1,23 @@
+{
+  "name": "@peopleflow/database",
+  "version": "0.1.0",
+  "private": true,
+  "main": "src/index.ts",
+  "scripts": {
+    "generate": "prisma generate --config prisma/generate-only.config.ts",
+    "migrate": "prisma migrate deploy",
+    "seed": "tsx prisma/seed.ts",
+    "provision": "tsx src/provision.ts",
+    "test:provision": "tsx prisma/test-provision.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@prisma/adapter-pg": "^6.19.3",
+    "@prisma/client": "6.19.3",
+    "argon2": "^0.44.0",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "prisma": "6.19.3"
+  }
+}

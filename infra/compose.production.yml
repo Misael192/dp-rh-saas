@@ -1,0 +1,25 @@
+# Merge with compose.yml only after configuring a real HTTPS domain/certificate.
+services:
+  api:
+    environment:
+      NODE_ENV: production
+  web:
+    environment:
+      DEPLOYMENT_ENV: production
+      TRUSTED_PROXY_HEADER: x-peopleflow-ingress-ip
+  gateway:
+    image: nginx:stable-bookworm
+    ports: ["80:80", "443:443"]
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    secrets: ["tls_certificate", "tls_private_key"]
+    depends_on:
+      web:
+        condition: service_healthy
+    restart: unless-stopped
+
+secrets:
+  tls_certificate:
+    file: ${TLS_CERTIFICATE_FILE:?Set an absolute certificate file path}
+  tls_private_key:
+    file: ${TLS_PRIVATE_KEY_FILE:?Set an absolute private key file path}

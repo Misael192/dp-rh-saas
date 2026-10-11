@@ -1,0 +1,186 @@
+name: PeopleFlow TypeScript platform
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: peopleflow-platform-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  foundation:
+    name: Build, security, PostgreSQL RLS and browser flows
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: .
+        shell: bash
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: peopleflow_platform_test
+          POSTGRES_USER: postgres
+          # This password belongs only to the disposable CI service container.
+          POSTGRES_PASSWORD: peopleflow_ci_ephemeral_admin
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d peopleflow_platform_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 12
+    env:
+      CI: 'true'
+      NODE_ENV: test
+      NEXT_TELEMETRY_DISABLED: '1'
+      WEB_ORIGIN: http://localhost:3000
+      API_INTERNAL_URL: http://127.0.0.1:4000
+      DEPLOYMENT_ENV: development
+      TRUSTED_PROXY_HEADER: ''
+      REDIS_URL: redis://127.0.0.1:6379/0
+      TEST_REDIS_URL: redis://127.0.0.1:6379/15
+      SEED_DEMO: 'false'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install frozen dependencies
+        run: npm ci
+
+      - name: Generate and mask ephemeral configuration
+        run: |
+          node --input-type=module <<'NODE'
+          import { randomBytes } from 'node:crypto';
+          import { appendFileSync } from 'node:fs';
+          const runtimePassword = randomBytes(32).toString('hex');
+          const runtimeUrl = `postgresql://peopleflow_app:${runtimePassword}@127.0.0.1:5432/peopleflow_platform_test`;
+          const adminUrl = 'postgresql://postgres:peopleflow_ci_ephemeral_admin@127.0.0.1:5432/peopleflow_platform_test';
+          const values = {
+            RUNTIME_DB_PASSWORD: runtimePassword,
+            DATABASE_URL: runtimeUrl,
+            TEST_DATABASE_URL: runtimeUrl,
+            DATABASE_ADMIN_URL: adminUrl,
+            TEST_DATABASE_ADMIN_URL: adminUrl,
+            JWT_SECRET: randomBytes(48).toString('hex'),
+            DATA_ENCRYPTION_KEY: randomBytes(32).toString('base64'),
+            API_PROXY_SECRET: randomBytes(48).toString('hex'),
+            SEED_PASSWORD: randomBytes(24).toString('base64url'),
+            REDIS_PREFIX: `peopleflow-ci-${randomBytes(8).toString('hex')}`,
+          };
+          for (const [name, value] of Object.entries(values)) {
+            console.log(`::add-mask::${value}`);
+            appendFileSync(process.env.GITHUB_ENV, `${name}=${value}\n`);
+          }
+          NODE
+
+      - name: Provision restricted runtime PostgreSQL role
+        run: |
+          node --input-type=module <<'NODE'
+          import pg from 'pg';
+          const client = new pg.Client({ connectionString: process.env.DATABASE_ADMIN_URL });
+          try {
+            await client.connect();
+            // PostgreSQL quotes the generated password; it is never printed or
+            // included in shell arguments. This role is separate from migrations.
+            const { rows } = await client.query(
+              'SELECT format($1::text, $2::text) AS statement',
+              ['CREATE ROLE peopleflow_app LOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOINHERIT PASSWORD %L', process.env.RUNTIME_DB_PASSWORD],
+            );
+            await client.query(rows[0].statement);
+            await client.query('GRANT CONNECT ON DATABASE peopleflow_platform_test TO peopleflow_app');
+            console.log('Restricted CI runtime role provisioned.');
+          } catch {
+            console.error('CI role provisioning failed; connection strings and secrets omitted.');
+            process.exitCode = 1;
+          } finally { await client.end(); }
+          NODE
+
+      - name: Generate Prisma client
+        run: npm run db:generate
+
+      - name: Deploy native Prisma migrations
+        # Uses the regular Prisma migrate deploy CLI and administrative URL.
+        # No checksum/TLS/signature bypasses are enabled in this workflow.
+        run: npm run db:migrate
+
+      - name: Apply explicit runtime grants
+        run: node infra/scripts/apply-grants.mjs
+
+      - name: Compile contracts and API
+        run: |
+          npm run build -w @peopleflow/contracts
+          npm run build -w @peopleflow/api
+
+      - name: Typecheck all workspaces
+        run: npm run typecheck
+
+      - name: Cryptography, JWT, CSRF and input unit tests
+        run: npm test
+
+      - name: PostgreSQL and Redis integration tests
+        run: npm run test:integration
+
+      - name: Production provisioning guardrails
+        run: npm run test:provision -w @peopleflow/database
+
+      - name: Demo seed guardrails
+        run: |
+          node --input-type=module <<'NODE'
+          import { spawnSync } from 'node:child_process';
+          const cases = [
+            { env: { NODE_ENV: 'production', SEED_DEMO: 'false' }, expected: 0 },
+            { env: { NODE_ENV: 'production', SEED_DEMO: 'true' }, expected: 1 },
+            { env: { NODE_ENV: 'development', SEED_DEMO: 'true', SEED_PASSWORD: '' }, expected: 1 },
+          ];
+          for (const item of cases) {
+            const result = spawnSync(process.execPath, ['scripts/run.mjs', 'seed'], {
+              env: { ...process.env, ...item.env }, encoding: 'utf8', timeout: 30000,
+            });
+            const output = `${result.stdout ?? ''}${result.stderr ?? ''}`;
+            const secrets = ['JWT_SECRET', 'DATA_ENCRYPTION_KEY', 'API_PROXY_SECRET', 'DATABASE_ADMIN_URL', 'DATABASE_URL', 'SEED_PASSWORD'];
+            if (result.status !== item.expected || secrets.some(name => process.env[name] && output.includes(process.env[name]))) {
+              console.error('Demo seed guardrail failed; subprocess output withheld.');
+              process.exit(1);
+            }
+          }
+          console.log('Demo seed opt-in, production prohibition and missing-password checks passed.');
+          NODE
+
+      - name: Build production Next.js frontend
+        env:
+          NODE_ENV: production
+        run: npm run build -w @peopleflow/web
+
+      - name: Install Chromium and operating-system dependencies
+        run: npx playwright install --with-deps chromium
+
+      - name: Browser flows against production frontend
+        run: npm run test:e2e
+
+      - name: Audit production dependencies
+        run: npm audit --omit=dev

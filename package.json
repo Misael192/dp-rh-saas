@@ -1,0 +1,41 @@
+{
+  "name": "peopleflow-platform",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "engines": {
+    "node": ">=22 <25"
+  },
+  "scripts": {
+    "db:generate": "npm run generate -w @peopleflow/database",
+    "db:migrate": "node scripts/run.mjs migrate",
+    "db:seed": "node scripts/run.mjs seed",
+    "db:provision": "node scripts/run.mjs provision",
+    "test:provision": "node scripts/run.mjs test:provision",
+    "build": "npm run db:generate && npm run build -w @peopleflow/contracts && npm run build -w @peopleflow/api && npm run build -w @peopleflow/web",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test -w @peopleflow/api",
+    "test:integration": "node scripts/run.mjs test:integration",
+    "dev:api": "node scripts/run.mjs dev:api",
+    "dev:web": "node scripts/run.mjs dev:web",
+    "test:e2e": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.64.0",
+    "@types/node": "^22.18.0",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4"
+  },
+  "overrides": {
+    "next": {
+      "postcss": "8.5.29"
+    },
+    "@prisma/config": {
+      "deepmerge-ts": "8.0.2"
+    }
+  }
+}

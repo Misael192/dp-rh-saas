@@ -1,0 +1,16 @@
+node_modules
+**/node_modules
+**/.next
+**/dist
+.env
+.env.*
+!.env.example
+**/.env
+**/.env.*
+!**/.env.example
+.secrets
+**/.secrets
+infra/backups
+coverage
+**/coverage
+.git

@@ -1,0 +1,175 @@
+generator client {
+  provider   = "prisma-client-js"
+  engineType = "client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  HR
+  MANAGER
+  EMPLOYEE
+}
+
+enum EmployeeStatus {
+  ACTIVE
+  ON_LEAVE
+  TERMINATED
+}
+
+// Only public routing metadata lives here. Private data must have company scope.
+model Tenant {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  slug      String    @unique @db.VarChar(80)
+  name      String    @db.VarChar(160)
+  isActive  Boolean   @default(true) @map("is_active")
+  companies Company[]
+
+  @@map("tenants")
+}
+
+model Company {
+  id               String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId         String            @map("tenant_id") @db.Uuid
+  slug             String            @db.VarChar(80)
+  name             String            @db.VarChar(160)
+  isActive         Boolean           @default(true) @map("is_active")
+  tenant           Tenant            @relation(fields: [tenantId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  users            User[]
+  employees        Employee[]
+  authSessions     AuthSession[]
+  mfaCredentials   MfaCredential[]
+  mfaRecoveryCodes MfaRecoveryCode[]
+  auditLogs        AuditLog[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, slug])
+  @@index([tenantId, isActive])
+  @@map("companies")
+}
+
+model User {
+  id               String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId         String            @map("tenant_id") @db.Uuid
+  companyId        String            @map("company_id") @db.Uuid
+  email            String            @db.VarChar(254)
+  name             String            @db.VarChar(160)
+  passwordHash     String            @map("password_hash") @db.Text
+  role             Role              @default(EMPLOYEE)
+  isActive         Boolean           @default(true) @map("is_active")
+  tokenVersion     Int               @default(0) @map("token_version")
+  mfaEnabled       Boolean           @default(false) @map("mfa_enabled")
+  company          Company           @relation(fields: [tenantId, companyId], references: [tenantId, id], onDelete: Restrict, onUpdate: Restrict)
+  employee         Employee?
+  authSessions     AuthSession[]
+  mfaCredential    MfaCredential?
+  mfaRecoveryCodes MfaRecoveryCode[]
+  auditLogs        AuditLog[]
+
+  @@unique([tenantId, companyId, id])
+  @@unique([tenantId, companyId, email])
+  @@index([tenantId, companyId, isActive])
+  @@map("users")
+}
+
+model AuthSession {
+  id                         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId                   String    @map("tenant_id") @db.Uuid
+  companyId                  String    @map("company_id") @db.Uuid
+  userId                     String    @map("user_id") @db.Uuid
+  refreshTokenHash           String    @map("refresh_token_hash") @db.VarChar(128)
+  previousRefreshTokenHashes String[]  @default([]) @map("previous_refresh_token_hashes")
+  expiresAt                  DateTime  @map("expires_at") @db.Timestamptz(3)
+  revokedAt                  DateTime? @map("revoked_at") @db.Timestamptz(3)
+  rotationCounter            Int       @default(0) @map("rotation_counter")
+  tokenVersion               Int       @default(0) @map("token_version")
+  createdAt                  DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  company                    Company   @relation(fields: [tenantId, companyId], references: [tenantId, id], onDelete: Restrict, onUpdate: Restrict)
+  user                       User      @relation(fields: [tenantId, companyId, userId], references: [tenantId, companyId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([tenantId, companyId, id])
+  @@index([tenantId, companyId, userId, revokedAt])
+  @@index([expiresAt])
+  @@map("auth_sessions")
+}
+
+model MfaCredential {
+  id                     String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId               String  @map("tenant_id") @db.Uuid
+  companyId              String  @map("company_id") @db.Uuid
+  userId                 String  @unique @map("user_id") @db.Uuid
+  secretEncrypted        String? @map("secret_encrypted") @db.Text
+  pendingSecretEncrypted String? @map("pending_secret_encrypted") @db.Text
+  lastUsedStep           BigInt? @map("last_used_step")
+  company                Company @relation(fields: [tenantId, companyId], references: [tenantId, id], onDelete: Restrict, onUpdate: Restrict)
+  user                   User    @relation(fields: [tenantId, companyId, userId], references: [tenantId, companyId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([tenantId, companyId, id])
+  @@unique([tenantId, companyId, userId])
+  @@map("mfa_credentials")
+}
+
+model MfaRecoveryCode {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId  String    @map("tenant_id") @db.Uuid
+  companyId String    @map("company_id") @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  codeHash  String    @map("code_hash") @db.VarChar(128)
+  usedAt    DateTime? @map("used_at") @db.Timestamptz(3)
+  company   Company   @relation(fields: [tenantId, companyId], references: [tenantId, id], onDelete: Restrict, onUpdate: Restrict)
+  user      User      @relation(fields: [tenantId, companyId, userId], references: [tenantId, companyId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([tenantId, companyId, id])
+  @@unique([tenantId, companyId, userId, codeHash])
+  @@index([tenantId, companyId, userId, usedAt])
+  @@map("mfa_recovery_codes")
+}
+
+model Employee {
+  id             String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId       String         @map("tenant_id") @db.Uuid
+  companyId      String         @map("company_id") @db.Uuid
+  userId         String?        @map("user_id") @db.Uuid
+  registration   String         @db.VarChar(40)
+  fullName       String         @map("full_name") @db.VarChar(160)
+  email          String?        @db.VarChar(254)
+  jobTitle       String         @map("job_title") @db.VarChar(120)
+  departmentName String         @map("department_name") @db.VarChar(120)
+  hiredAt        DateTime       @map("hired_at") @db.Date
+  status         EmployeeStatus @default(ACTIVE)
+  createdAt      DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime       @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+  company        Company        @relation(fields: [tenantId, companyId], references: [tenantId, id], onDelete: Restrict, onUpdate: Restrict)
+  user           User?          @relation(fields: [tenantId, companyId, userId], references: [tenantId, companyId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([tenantId, companyId, id])
+  @@unique([tenantId, companyId, registration])
+  @@unique([tenantId, companyId, userId])
+  @@index([tenantId, companyId, status])
+  @@index([tenantId, companyId, hiredAt])
+  @@index([tenantId, companyId, fullName])
+  @@map("employees")
+}
+
+model AuditLog {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  companyId String   @map("company_id") @db.Uuid
+  userId    String?  @map("user_id") @db.Uuid
+  action    String   @db.VarChar(100)
+  entityId  String?  @map("entity_id") @db.Uuid
+  metadata  Json     @default("{}") @db.JsonB
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  company   Company  @relation(fields: [tenantId, companyId], references: [tenantId, id], onDelete: Restrict, onUpdate: Restrict)
+  user      User?    @relation(fields: [tenantId, companyId, userId], references: [tenantId, companyId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([tenantId, companyId, id])
+  @@index([tenantId, companyId, createdAt])
+  @@index([tenantId, companyId, userId, createdAt])
+  @@index([tenantId, companyId, entityId])
+  @@map("audit_logs")
+}

@@ -1,0 +1,193 @@
+name: peopleflow
+
+x-db-environment: &db-environment
+  POSTGRES_DB: ${POSTGRES_DB:-peopleflow}
+  POSTGRES_USER: ${POSTGRES_USER:-peopleflow_migration}
+  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD securely}
+  RUNTIME_DB_PASSWORD: ${RUNTIME_DB_PASSWORD:?Set RUNTIME_DB_PASSWORD securely}
+
+services:
+  postgres:
+    image: postgres:17-bookworm
+    environment: *db-environment
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./postgres/init-runtime-role.sh:/docker-entrypoint-initdb.d/10-runtime-role.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-bookworm
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?Set REDIS_PASSWORD securely}
+    # A private config file keeps the password out of process arguments.
+    command: ["bash", "/scripts/redis-entrypoint.sh"]
+    user: redis
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - redis-data:/data
+      - ./scripts/redis-entrypoint.sh:/scripts/redis-entrypoint.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "REDISCLI_AUTH=\"$$REDIS_PASSWORD\" redis-cli ping | grep -q PONG"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  migrate:
+    build:
+      context: ..
+      dockerfile: Dockerfile.api
+      target: migration
+    environment:
+      DATABASE_ADMIN_URL: ${DATABASE_ADMIN_URL:?Set DATABASE_ADMIN_URL securely}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    build:
+      context: ..
+      dockerfile: Dockerfile.api
+      target: runtime
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      HOST: 0.0.0.0
+      PORT: 4000
+      DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL with peopleflow_app}
+      REDIS_URL: ${REDIS_URL:?Set REDIS_URL securely}
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET securely}
+      DATA_ENCRYPTION_KEY: ${DATA_ENCRYPTION_KEY:?Set DATA_ENCRYPTION_KEY securely}
+      API_PROXY_SECRET: ${API_PROXY_SECRET:?Set API_PROXY_SECRET securely}
+      WEB_ORIGIN: ${WEB_ORIGIN:-http://localhost:3000}
+      REDIS_PREFIX: ${REDIS_PREFIX:-peopleflow}
+      RATE_LIMIT_MAX: ${RATE_LIMIT_MAX:-30}
+    ports:
+      - "127.0.0.1:4000:4000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    init: true
+    read_only: true
+    tmpfs: ["/tmp"]
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    restart: unless-stopped
+
+  web:
+    build:
+      context: ..
+      dockerfile: Dockerfile.web
+    environment:
+      API_INTERNAL_URL: ${API_INTERNAL_URL:-http://api:4000}
+      WEB_ORIGIN: ${WEB_ORIGIN:-http://localhost:3000}
+      API_PROXY_SECRET: ${API_PROXY_SECRET:?Set API_PROXY_SECRET securely}
+      DEPLOYMENT_ENV: ${DEPLOYMENT_ENV:-development}
+      TRUSTED_PROXY_HEADER: ${TRUSTED_PROXY_HEADER:-}
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      api:
+        condition: service_healthy
+    init: true
+    read_only: true
+    tmpfs: ["/tmp", "/app/apps/web/.next/cache"]
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    restart: unless-stopped
+
+  seed:
+    profiles: ["demo"]
+    build:
+      context: ..
+      dockerfile: Dockerfile.api
+      target: migration
+    command: ["bash", "infra/scripts/seed-demo.sh"]
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      DATABASE_ADMIN_URL: ${DATABASE_ADMIN_URL:?Set DATABASE_ADMIN_URL securely}
+      SEED_DEMO: ${SEED_DEMO:-false}
+      SEED_PASSWORD: ${SEED_PASSWORD:-}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: "no"
+
+  postgres-test:
+    profiles: ["test"]
+    image: postgres:17-bookworm
+    environment:
+      <<: *db-environment
+      POSTGRES_DB: peopleflow_test
+    # Disposable test cluster does not share the application volume.
+    tmpfs: ["/var/lib/postgresql/data"]
+    volumes:
+      - ./postgres/init-runtime-role.sh:/docker-entrypoint-initdb.d/10-runtime-role.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d peopleflow_test"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  api-tests:
+    profiles: ["test"]
+    build:
+      context: ..
+      dockerfile: Dockerfile.api
+      target: migration
+    command: ["bash", "infra/scripts/test-integration.sh"]
+    environment:
+      TEST_DATABASE_URL: ${TEST_DATABASE_URL:?Set an isolated TEST_DATABASE_URL}
+      TEST_DATABASE_ADMIN_URL: ${TEST_DATABASE_ADMIN_URL:?Set an isolated TEST_DATABASE_ADMIN_URL}
+      TEST_REDIS_URL: ${TEST_REDIS_URL:?Set TEST_REDIS_URL}
+    depends_on:
+      postgres-test:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: "no"
+
+  backup:
+    profiles: ["backup"]
+    image: postgres:17-bookworm
+    entrypoint: ["bash", "/scripts/backup-loop.sh"]
+    environment:
+      PGHOST: postgres
+      PGPORT: 5432
+      PGDATABASE: ${POSTGRES_DB:-peopleflow}
+      PGUSER: ${POSTGRES_USER:-peopleflow_migration}
+      PGPASSFILE: /run/secrets/backup_pgpass
+      BACKUP_DIR: /backups
+      BACKUP_INTERVAL_SECONDS: ${BACKUP_INTERVAL_SECONDS:-86400}
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-14}
+    secrets: ["backup_pgpass"]
+    volumes:
+      - backup-data:/backups
+      - ./scripts:/scripts:ro
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    read_only: true
+    tmpfs: ["/tmp"]
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    restart: unless-stopped
+
+secrets:
+  backup_pgpass:
+    file: ${BACKUP_PGPASSFILE:-../.secrets/backup.pgpass}
+
+volumes:
+  postgres-data:
+  redis-data:
+  backup-data:

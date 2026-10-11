@@ -1,0 +1,22 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 220 30% 98%; --foreground: 222 34% 16%; --card: 0 0% 100%;
+    --muted: 220 22% 95%; --muted-foreground: 218 14% 43%; --primary: 239 75% 58%;
+    --primary-foreground: 0 0% 100%; --border: 220 22% 91%; --destructive: 0 72% 45%;
+  }
+  .dark {
+    --background: 224 25% 9%; --foreground: 220 25% 94%; --card: 224 23% 12%;
+    --muted: 223 20% 17%; --muted-foreground: 220 14% 66%; --primary: 239 85% 72%;
+    --primary-foreground: 224 25% 9%; --border: 223 20% 21%; --destructive: 0 85% 72%;
+  }
+  * { @apply border-border; }
+  body { @apply bg-background text-foreground antialiased; }
+  :focus-visible { @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background; }
+  input[type="date"] { color-scheme: light; }
+  .dark input[type="date"] { color-scheme: dark; }
+  @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; scroll-behavior: auto !important; } }
+}
