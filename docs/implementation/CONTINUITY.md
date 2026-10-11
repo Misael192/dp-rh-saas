@@ -45,12 +45,23 @@ A validação anterior pertence ao checkout original e está no histórico. **A 
 | Repetição de `npm run db:migrate` no banco novo dev | PASS: nenhuma migration pendente |
 | Seed opt-in no banco dev novo | PASS: dados sintéticos, sem alterar bases antigas |
 | Inventário de fontes/configuração/documentação | 130 arquivos revisados, sem secrets/builds privados |
+| Docker build API runtime e web standalone | PASS, Dockerfiles iguais aos testados, CA opcional |
+| Docker smoke API production | Readiness200 com PostgreSQL17/Redis7, colaboradores401 sem sessão, Argon2 nativo PASS |
+| Docker smoke web production | Login200 com CSP nonce, BFF recusa ingresso ausente503 e encaminha CSRF200 com ingresso válido |
+| Compose base/produção, scripts infra e `nginx -t` | PASS, validação sintática e certificado sintético |
+| `npm run dev:api`/`dev:web` + fluxo HTTP | PASS: readiness, login pelo proxy, colaboradores persistidos, logout/revogação |
 
 Durante a validação, o builder Docker esgotou o volume; foram removidos somente seus caches identificados e o `.next` derivado do checkout anterior. A migration no banco novo de teste falhou por espaço antes de criar tabelas/enums: conferido o schema vazio (somente `_prisma_migrations`), usada a CLI `migrate resolve --rolled-back`, e deploy repetido com sucesso. Nenhum banco existente foi resetado ou apagado.
 
 O comando de desenvolvimento da API inicialmente não carregava o tsconfig de decorators ao executar na raiz. Corrigido o cwd de `dev:api` para `apps/api`; o Nest iniciou e readiness + login pelo proxy + listagem autenticada passaram. Dockerfiles passaram a aceitar CA de proxy via secret BuildKit opcional nos comandos npm, preservando TLS e sem armazenar o certificado na imagem.
 
-Publicação do commit e resultados finais Docker serão registrados no marco seguinte. O workflow GitHub ainda não teve execução observada.
+Containers de smoke usaram usuário `node`, filesystem read-only, remoção de capabilities e `no-new-privileges`, sem publicar portas. A API recebeu somente a URL runtime, sem URL administrativa; a web não recebeu credenciais de banco. Caches/containers/rede criados durante a validação foram identificados para limpeza, preservando recursos preexistentes. No daemon VFS deste cloud, construa as imagens sequencialmente e confira o espaço livre: as cópias de layers consomem mais espaço que o tamanho lógico mostrado pelo BuildKit.
+
+## Publicação no GitHub
+
+Entrega publicada em `main` no commit [`66b8113122e22eaea2b4b1c0e0344a8a7fe51d37`](https://github.com/Misael192/dp-rh-saas/commit/66b8113122e22eaea2b4b1c0e0344a8a7fe51d37), com 130 arquivos e 12.352 linhas acrescentadas. `git push origin main` passou e `git ls-remote origin refs/heads/main` confirmou o mesmo SHA. Este registro recebe uma atualização posterior de evidências; consulte `git log` para o HEAD mais recente. O checkout de origem teve seu log atualizado localmente apontando para este destino, sem publicar alterações legadas.
+
+O workflow foi adaptado à raiz e validado sintaticamente, mas ainda não teve execução observada no GitHub. Nenhum ambiente Vercel/Railway ou deploy de produção foi realizado. Não confundir publicação dos fontes com implantação do serviço.
 
 ## Estado operacional e cuidados para retomada
 
@@ -58,10 +69,10 @@ Publicação do commit e resultados finais Docker serão registrados no marco se
 - Cloud atual tem Node24/npm11, PostgreSQL17/Redis locais via `/workspace/cloud-tools/start-services.sh`. Cache npm gravável: `/workspace/cloud-tools/npm-cache`. Nunca assumir que processos sobrevivem a outra tarefa.
 - Configuração privada atual: `/workspace/cloud-tools/dp-rh-saas.env`, mode0600, fora do checkout. Use `export ENV_FILE=/workspace/cloud-tools/dp-rh-saas.env` neste snapshot antes dos scripts de dev/test. Foram reutilizadas configurações de desenvolvimento anteriores, com URLs ajustadas exclusivamente para os bancos novos `dp_rh_saas_dev` e `dp_rh_saas_test`; valores não registrados. Outras máquinas devem configurar `.env` privado usando `.env.example` ou bindings seguros.
 - Bancos existentes `peopleflow_stage1`/`peopleflow_stage1_test` receberam SQL inicial diretamente com psql. Não possuem baseline Prisma registrada. **Não executar migrate deploy nesses bancos existentes sem conferir o schema e registrar a baseline conforme o guia. Não usar reset/drop.** Banco novo usa deploy normal.
-- A pendência anterior de CLI nativa foi resolvida para as bases novas. Builds Docker e execução do CI no GitHub são registrados separadamente; não assumir sua conclusão pelo build nativo.
+- CLI nativa e builds Docker foram validados nas bases/imagens novas. Ainda verificar o resultado do CI GitHub e o ciclo completo Compose/release/backup na infraestrutura definitiva. Baseline das bases antigas segue pendente caso sejam reutilizadas.
 - Backup/restauração anterior validado em banco sintético novo; detalhes no histórico. Sem deployment Vercel/Railway, domínio/TLS externo ou backup externo configurado.
 - A branch Claude `claude/peopleflow-platform-arch-hu6btz` em `4d087c4a6a5b7ed15a177c67e9d52d001bbddae2` pertence ao repositório anterior e evolui Laravel/Livewire. Sua revisão está em `CLAUDE-COMMAND-REVIEW.md`; não é a plataforma transferida.
 
 ## Próximo passo exato
 
-Concluir validação na raiz de `dp-rh-saas`, registrar evidências e publicar a Etapa 1 em `main` sem force-push. Atualizar o registro anterior com o novo local. Depois apresentar o resultado ao usuário e aguardar aprovação explícita da Etapa 2. Resolver pendências operacionais de release antes de implantar produção; não marcar módulos planejados como entregues.
+**Aguardar aprovação explícita da Etapa 2.** A Etapa 1 está publicada no novo repositório e o registro de origem aponta para ele. Ao receber a aprovação, detalhar primeiro escopo/aceite da próxima entrega; preserve o histórico e todas as alterações locais. Antes de qualquer implantação de produção, confirmar CI, credenciais/ingresso, backup externo, restauração e operação no destino definitivo. Não marcar módulos planejados como entregues.
