@@ -74,6 +74,10 @@ export const updateTemplateSchema = z.object({
   isActive: z.boolean().optional(),
 }).refine((value) => Object.keys(value).length > 0, 'Informe pelo menos um campo.').strict();
 
+export const downloadTokenSchema = z.object({
+  token: z.string().min(32).max(4096),
+}).strict();
+
 export const templateIdSchema = uuidSchema;
 
 export type DocumentQuery = z.infer<typeof documentQuerySchema>;

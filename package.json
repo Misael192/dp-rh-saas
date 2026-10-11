@@ -24,6 +24,7 @@
     "test:e2e": "playwright test"
   },
   "devDependencies": {
+    "@nestjs/testing": "^11.1.9",
     "@playwright/test": "^1.64.0",
     "@types/node": "^22.18.0",
     "tsx": "^4.20.6",

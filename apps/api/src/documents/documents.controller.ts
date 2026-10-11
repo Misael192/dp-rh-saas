@@ -1,8 +1,10 @@
-import { BadRequestException, Body, Controller, Get, HttpCode, Inject, Param, Patch, Post, Query, UploadedFile, UseInterceptors } from '@nestjs/common';
-import { FileInterceptor } from '@nestjs/platform-express';
+import { BadRequestException, Body, Controller, Get, HttpCode, Injectable, Inject, Param, Patch, PayloadTooLargeException, Post, Query, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { type CallHandler, type ExecutionContext, type NestInterceptor, FileInterceptor } from '@nestjs/platform-express';
+import { Observable } from 'rxjs';
 import { z } from 'zod';
 import type { AuthUser } from '../auth/auth.types';
 import { CurrentUser, Public } from '../auth/decorators';
+import { AppConfig } from '../common/config';
 import {
   addVersionSchema, createDocumentSchema, createSignatureSchema, createTemplateSchema,
   documentIdSchema, documentQuerySchema, downloadTokenSchema, rejectSignatureSchema, signDocumentSchema,
@@ -18,9 +20,34 @@ function validated<T extends z.ZodTypeAny>(schema: T, value: unknown): z.output<
   return parsed.data;
 }
 
+/** Absolute transport ceiling for multer (decorators are evaluated before DI).
+ * The authoritative per-deployment limit is DOCUMENT_MAX_UPLOAD_BYTES, enforced
+ * post-parse by MulterLimitsGuard and re-checked inside DocumentsService.validateUpload. */
+const DOCUMENT_MULTER_HARD_CAP = 50 * 1024 * 1024;
+
+@Injectable()
+export class MulterLimitsGuard implements NestInterceptor {
+  constructor(@Inject(AppConfig) private readonly config: AppConfig) {}
+  intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
+    const request = context.switchToHttp().getRequest<{ file?: { size?: number }; files?: Array<{ size?: number }> }>();
+    const max = this.config.values.DOCUMENT_MAX_UPLOAD_BYTES;
+    const uploaded = [request.file, ...(request.files ?? [])].filter(Boolean) as Array<{ size: number }>;
+    if (uploaded.some((file) => file.size > max)) throw new PayloadTooLargeException('Arquivo maior que o limite de upload.');
+    return next.handle();
+  }
+}
+
 @Controller('documents')
 export class DocumentsController {
-  constructor(@Inject(DocumentsService) private readonly documents: DocumentsService) {}
+  /** Resolved once at module wiring (same lazy pattern as the StorageModule factory) so the
+   * multer transport limit and the service-side validation share DOCUMENT_MAX_UPLOAD_BYTES. */
+  private readonly uploadLimits: { fileSize: number; files: 1 };
+  constructor(
+    @Inject(DocumentsService) private readonly documents: DocumentsService,
+    @Inject(AppConfig) config: AppConfig,
+  ) {
+    this.uploadLimits = { fileSize: config.values.DOCUMENT_MAX_UPLOAD_BYTES, files: 1 };
+  }
 
   @Get()
   list(@CurrentUser() user: AuthUser, @Query() query: unknown) {
@@ -60,7 +87,7 @@ export class DocumentsController {
 
   /** multipart upload: memory storage with an explicit size cap from configuration. */
   @Post(':id/versions')
-  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 20 * 1024 * 1024, files: 1 } }))
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: DOCUMENT_MULTER_HARD_CAP, files: 1 } }), MulterLimitsGuard)
   addVersion(@CurrentUser() user: AuthUser, @Param('id') id: string, @UploadedFile() file: Express.Multer.File | undefined, @Body() body: unknown) {
     if (!file) throw new BadRequestException('Envie o arquivo no campo "file".');
     return this.documents.addVersion(
