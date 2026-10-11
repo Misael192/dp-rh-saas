@@ -85,6 +85,10 @@ beforeAll(async () => {
   process.env.DATA_ENCRYPTION_KEY = randomBytes(32).toString('base64');
   process.env.RATE_LIMIT_MAX = '500';
   process.env.RATE_LIMIT_LOGIN_MAX = '500';
+  process.env.STORAGE_PROVIDER = 'SUPABASE';
+  process.env.STORAGE_BUCKET = 'integration-memory';
+  process.env.SUPABASE_URL = 'https://storage.invalid';
+  process.env.SUPABASE_SERVICE_ROLE_KEY = randomBytes(32).toString('base64url');
 
   adminDatabase = new PrismaClient({ adapter: new PrismaPg({ connectionString: admin }) });
   runtimeDatabase = new PrismaClient({ adapter: new PrismaPg({ connectionString: runtime }) });

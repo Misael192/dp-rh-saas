@@ -84,7 +84,7 @@ export class PrismaDocumentsRepository extends DocumentsRepository {
       where: { ...scope, id },
       select: {
         ...this.documentSelect(),
-        ...(includeVersions ? { versions: { orderBy: { versionNumber: 'desc' }, ...versionSelect } } : {}),
+        ...(includeVersions ? { versions: { orderBy: { versionNumber: 'desc' }, select: versionSelect } } : {}),
         signatures: { orderBy: [{ createdAt: 'asc' }, { id: 'asc' }], select: signatureShape },
       },
     }).then((document) => (document ? { ...document, employeeUserId: document.employee?.userId ?? null } as unknown as DocumentRecord : null)));

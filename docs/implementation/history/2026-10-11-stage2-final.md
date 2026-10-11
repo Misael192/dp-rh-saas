@@ -14,7 +14,8 @@ A implementação de documentos e storage está mergeada na `main` em `2ce60b420
 | `f99d6ce8198223d8b59558f7e7777ebf960991a6d` | Commit de implementação de documentos Stage 2 no branch da implementação. |
 | `2ce60b420b6f1ed727df8292aaa66145f87af02e` | Merge do PR #1 na `main`; CI encontrou `TS2339` pela ausência de `signerUserId` no contrato `SignatureView`. |
 | `a2fe61f5278a298e5ecc531564046e42f877cf47` | Commit do PR #2: adicionou `signerUserId` nullable ao contrato/serialização e documentação faltante. Typecheck local e build local passaram. CI passou pelo typecheck, mas falhou em um teste unitário por fixture com tenant/empresa diferentes. |
-| `5728ceaa693ec62a66f6a305ad07b2c47f0220cc` | CI run `38115604182`: typecheck e unit tests passaram; integração PostgreSQL/Redis falhou. Corrigidos no checkout colisões de PK por `actor.id` copiado para registros Prisma, ordem de teardown da FK `currentVersionId`, `.setQuery()` não suportado pelo Supertest e importação redundante do módulo de storage. |
+| `5728ceaa693ec62a66f6a305ad07b2c47f0220cc` | CI run `38115604182`: typecheck e unit tests passaram; integração PostgreSQL/Redis falhou. Corrigidos no checkout colisões de PK por `actor.id` copiado para registros Prisma, ordem de teardown da FK `currentVersionId` e `.setQuery()` não suportado pelo Supertest. |
+| `2999848a6b8524d380ef353d62f6c1a893a43ba6` | CI run `38116220981`: typecheck/unit tests passaram; cinco cenários de integração falharam e 20 testes Stage 1 ficaram skipped. O log apontou projeção aninhada Prisma sem `select` e ausência de configuração sintética de storage na suíte Stage 1; ambos corrigidos no checkout. |
 
 ## Decisões e desvios
 
@@ -32,5 +33,6 @@ A implementação de documentos e storage está mergeada na `main` em `2ce60b420
 - CI do PR #2 no SHA `a2fe61f`: 22 testes passaram, um falhou (`EMPLOYEE only sees own documents via listVisibleToUser`, `expected [] to deeply equal [Array(1)]`). Novo run após o ajuste do fixture ainda pendente.
 - `npm test`: 23/23 PASS após as correções do fixture e do adapter.
 - `npm run typecheck` e `npm run build`: PASS após as correções de código em 2026-10-11.
+- Após corrigir a projeção aninhada e configurar storage sintético para Stage 1, `npm test` passou 23/23, `npm run typecheck` passou e `npm run build` passou novamente.
 - Integração PostgreSQL/RLS: nove cenários existem. Não foi executada localmente por ausência de `.env` e banco de teste local; o último run remoto falhou e precisa ser repetido após push.
 - Aguardar CI remota verde após o novo push, review e autorização explícita antes do merge. Não iniciar a Etapa 3 nem implantar em produção.
