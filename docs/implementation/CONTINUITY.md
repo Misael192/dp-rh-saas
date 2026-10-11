@@ -4,7 +4,7 @@
 
 Desenvolver um SaaS DP/RH incremental, com Next.js 15, NestJS, Prisma, PostgreSQL e Redis, isolamento multiempresa, JWT/refresh/RBAC/2FA e interface própria. O usuário exige documentação, testes e aprovação antes de cada próxima etapa.
 
-O usuário autorizou iniciar/transferir o projeto para `Misael192/dp-rh-saas`: “Joga todo o projeto ou inicia ele na dp-rh-saas”. Essa autorização inclui publicar os fontes da Etapa 1 nesse repositório. **A Etapa 2 aguarda aprovação. Não houve autorização para implantação em produção.**
+O usuário autorizou iniciar/transferir o projeto para `Misael192/dp-rh-saas`: “Joga todo o projeto ou inicia ele na dp-rh-saas”. A Etapa 1 foi publicada e a Etapa 2 foi autorizada e mergeada. O hotfix para a Etapa 2 está em branch/PR separado e **não deve ser mergeado sem aprovação explícita**. Não houve autorização para implantação em produção.
 
 ## Local atual e procedência
 
@@ -24,6 +24,12 @@ Autenticação e sessões revogáveis, refresh rotativo, CSRF, rate limit Redis,
 Schema e migration inicial com FORCE RLS, escopo tenant/empresa, FKs compostas, índices e auditoria append-only. Role runtime sem superuser/BYPASSRLS. Provisionamento create-only com senha em arquivo privado e seed sintético bloqueado em produção. Infraestrutura Docker/Compose, ingresso TLS, backup/restauração, CI e testes reais PostgreSQL/Redis/Chromium.
 
 Next 15.5.27, React 19, Nest 11, Prisma 6.19.3 com adapter oficial PrismaPg, Node 22–24. Versões resolvidas no lockfile. Consulte [STAGE-1.md](STAGE-1.md) para os dez tópicos de entrega e etapas futuras; [DEPLOYMENT.md](DEPLOYMENT.md) para operação.
+
+## Etapa 2 — documentos e storage
+
+**Status:** Mergeada na main, hotfix aplicado para corrigir typecheck de `SignatureView` e adicionar documentação faltante. O hotfix está no branch `hotfix/stage2-typecheck-and-docs`; aguardar revisão e aprovação explícita antes do merge. A Etapa 2 não foi implantada em produção.
+
+O PR #1 foi mergeado em `2ce60b420b6f1ed727df8292aaa66145f87af02e`. O workflow desse commit falhou no typecheck: `apps/web/src/components/documents-view.tsx` acessava `signerUserId`, ausente no contrato `SignatureView`. Este hotfix inclui o campo nullable no contrato e o serializa em `signatureView`. A execução local de `npm run typecheck` e `npm run build` passou em 2026-10-11; detalhes, entregáveis e desvios estão em [STAGE-2.md](STAGE-2.md). A CI do merge original não validou os testes posteriores ao typecheck; não marcar a execução de integração como repetida neste hotfix.
 
 ## Transferência e validação no novo destino
 
@@ -75,4 +81,4 @@ O workflow foi adaptado à raiz e validado sintaticamente, mas ainda não teve e
 
 ## Próximo passo exato
 
-**Aguardar aprovação explícita da Etapa 2.** A Etapa 1 está publicada no novo repositório e o registro de origem aponta para ele. Ao receber a aprovação, detalhar primeiro escopo/aceite da próxima entrega; preserve o histórico e todas as alterações locais. Antes de qualquer implantação de produção, confirmar CI, credenciais/ingresso, backup externo, restauração e operação no destino definitivo. Não marcar módulos planejados como entregues.
+**Aguardar revisão e aprovação explícita para merge do PR de hotfix da Etapa 2.** Não fazer merge nem iniciar a Etapa 3 antes de autorização. Preserve o histórico e todas as alterações locais. Antes de qualquer implantação de produção, confirmar CI, credenciais/ingresso, backup externo, restauração e operação no destino definitivo. Não marcar módulos planejados como entregues.

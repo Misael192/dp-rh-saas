@@ -17,7 +17,7 @@ export interface FileSummary {
 }
 
 export interface SignatureView {
-  id: string; versionId: string; signerName: string; role: SignatureRole; status: SignatureStatus;
+  id: string; versionId: string; signerName: string; signerUserId: string | null; role: SignatureRole; status: SignatureStatus;
   signedAt: string | null; evidence: Record<string, unknown>; createdAt: string;
 }
 
