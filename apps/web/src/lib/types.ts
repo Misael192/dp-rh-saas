@@ -9,5 +9,6 @@ export function userHome(role: Role) { return role === "EMPLOYEE" ? "/colaborado
 export function mayAccess(role: Role, path: string) {
   if (path === "/dashboard") return role === "ADMIN" || role === "HR";
   if (path === "/colaboradores") return role !== "MANAGER";
+  if (path === "/documentos") return role !== "MANAGER";
   return path === "/empresa" || path === "/seguranca";
 }

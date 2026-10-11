@@ -3,7 +3,7 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from "
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
-import { Building2, ChevronDown, LayoutDashboard, LogOut, Menu, ShieldCheck, UsersRound, Sparkles, LockKeyhole } from "lucide-react";
+import { Building2, ChevronDown, FileText, LayoutDashboard, LogOut, Menu, ShieldCheck, UsersRound, Sparkles, LockKeyhole } from "lucide-react";
 import { api, ApiError, clearApiSession, errorMessage } from "@/lib/api";
 import { mayAccess, roles, userHome, type User } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -16,7 +16,7 @@ import { useRecoveryCodes } from "./providers";
 
 const UserContext = createContext<User | null>(null);
 export function useUser() { const user = useContext(UserContext); if (!user) throw new Error("Sessão indisponível."); return user; }
-const navigation = [{ href: "/dashboard", label: "Visão geral", icon: LayoutDashboard }, { href: "/colaboradores", label: "Colaboradores", icon: UsersRound }, { href: "/empresa", label: "Minha empresa", icon: Building2 }, { href: "/seguranca", label: "Segurança", icon: ShieldCheck }];
+const navigation = [{ href: "/dashboard", label: "Visão geral", icon: LayoutDashboard }, { href: "/colaboradores", label: "Colaboradores", icon: UsersRound }, { href: "/documentos", label: "Documentos", icon: FileText }, { href: "/empresa", label: "Minha empresa", icon: Building2 }, { href: "/seguranca", label: "Segurança", icon: ShieldCheck }];
 
 function Sidebar({ user, onNavigate }: { user: User; onNavigate?: () => void }) {
   const pathname = usePathname();
