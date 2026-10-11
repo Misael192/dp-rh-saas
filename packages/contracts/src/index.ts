@@ -17,3 +17,5 @@ export interface SessionUser { id:string;name:string;email:string;role:Role;tena
 export interface Employee {id:string;registration:string;fullName:string;email:string|null;jobTitle:string;departmentName:string;hiredAt:string;status:EmployeeStatus;createdAt:string;updatedAt:string;}
 export interface Page<T> {items:T[];total:number;page:number;pageSize:number;}
 export interface Dashboard {totalEmployees:number;activeEmployees:number;onLeaveEmployees:number;terminatedEmployees:number;departments:number;recentAdmissions:Employee[];}
+
+export * from "./documents";

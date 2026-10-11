@@ -14,6 +14,19 @@ const envSchema = z.object({
   RATE_LIMIT_MAX: z.coerce.number().int().min(1).max(1000).default(30),
   RATE_LIMIT_LOGIN_MAX: z.coerce.number().int().min(1).max(1000).default(10),
   API_PROXY_SECRET: z.string().refine(value => Buffer.byteLength(value) >= 32, 'Must contain at least 32 bytes').optional(),
+  // Stage 2 — storage foundation. Provider-specific keys are validated lazily
+  // by the selected adapter so a deployment only needs its own variables.
+  STORAGE_PROVIDER: z.enum(['SUPABASE', 'S3']).default('SUPABASE'),
+  STORAGE_BUCKET: z.string().regex(/^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/, 'Must be a valid bucket name').optional(),
+  SUPABASE_URL: z.string().url().optional(),
+  SUPABASE_SERVICE_ROLE_KEY: z.string().min(32).optional(),
+  AWS_REGION: z.string().min(1).max(64).optional(),
+  AWS_ACCESS_KEY_ID: z.string().min(8).optional(),
+  AWS_SECRET_ACCESS_KEY: z.string().min(8).optional(),
+  S3_ENDPOINT_URL: z.string().url().optional(),
+  DOWNLOAD_TOKEN_SECRET: z.string().refine(value => Buffer.byteLength(value) >= 32, 'Must contain at least 32 bytes').optional(),
+  DOWNLOAD_URL_TTL_SECONDS: z.coerce.number().int().min(30).max(3600).default(300),
+  DOCUMENT_MAX_UPLOAD_BYTES: z.coerce.number().int().min(1024).max(52_428_800).default(20 * 1024 * 1024),
 });
 
 @Injectable()

@@ -232,7 +232,6 @@ model FileObject {
   createdAt     DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
   company       Company         @relation(fields: [tenantId, companyId], references: [tenantId, id], onDelete: Restrict, onUpdate: Restrict)
   uploadedBy    User?           @relation("FileUploader", fields: [tenantId, companyId, uploadedById], references: [tenantId, companyId, id], onDelete: Restrict, onUpdate: Restrict)
-  documentTemplates DocumentTemplate[]
   documentVersions  DocumentVersion[]
 
   @@unique([tenantId, companyId, id])
@@ -301,6 +300,7 @@ model DocumentVersion {
   createdAt     DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
   company       Company     @relation(fields: [tenantId, companyId], references: [tenantId, id], onDelete: Restrict, onUpdate: Restrict)
   document      Document    @relation("DocumentVersions", fields: [tenantId, companyId, documentId], references: [tenantId, companyId, id], onDelete: Restrict, onUpdate: Restrict)
+  currentForDocuments Document[] @relation("DocumentCurrentVersion")
   fileObject    FileObject  @relation(fields: [tenantId, companyId, fileObjectId], references: [tenantId, companyId, id], onDelete: Restrict, onUpdate: Restrict)
   signatures    DocumentSignature[]
 
