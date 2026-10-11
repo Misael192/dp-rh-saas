@@ -1,1 +1,7 @@
+node_modules/
+.env
+.env.*
+!.env.example
+dist/
+.next/
 cloud-tools/dp-rh-saas.env
