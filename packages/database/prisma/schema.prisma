@@ -21,6 +21,38 @@ enum EmployeeStatus {
   TERMINATED
 }
 
+enum StorageProvider {
+  SUPABASE
+  S3
+}
+
+enum DocumentKind {
+  CONTRACT
+  TERM_SHEET
+  POLICY
+  PAYSLIP
+  DECLARATION
+  OTHER
+}
+
+enum DocumentStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum SignatureRole {
+  EMPLOYEE
+  EMPLOYER
+  WITNESS
+}
+
+enum SignatureStatus {
+  PENDING
+  SIGNED
+  REJECTED
+}
+
 // Only public routing metadata lives here. Private data must have company scope.
 model Tenant {
   id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
@@ -45,6 +77,11 @@ model Company {
   mfaCredentials   MfaCredential[]
   mfaRecoveryCodes MfaRecoveryCode[]
   auditLogs        AuditLog[]
+  fileObjects      FileObject[]
+  documentTemplates DocumentTemplate[]
+  documents         Document[]
+  documentVersions  DocumentVersion[]
+  documentSignatures DocumentSignature[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, slug])
@@ -69,6 +106,8 @@ model User {
   mfaCredential    MfaCredential?
   mfaRecoveryCodes MfaRecoveryCode[]
   auditLogs        AuditLog[]
+  uploadedFiles    FileObject[]       @relation("FileUploader")
+  signedDocuments  DocumentSignature[]
 
   @@unique([tenantId, companyId, id])
   @@unique([tenantId, companyId, email])
@@ -145,6 +184,7 @@ model Employee {
   updatedAt      DateTime       @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
   company        Company        @relation(fields: [tenantId, companyId], references: [tenantId, id], onDelete: Restrict, onUpdate: Restrict)
   user           User?          @relation(fields: [tenantId, companyId, userId], references: [tenantId, companyId, id], onDelete: Restrict, onUpdate: Restrict)
+  documents      Document[]
 
   @@unique([tenantId, companyId, id])
   @@unique([tenantId, companyId, registration])
@@ -172,4 +212,126 @@ model AuditLog {
   @@index([tenantId, companyId, userId, createdAt])
   @@index([tenantId, companyId, entityId])
   @@map("audit_logs")
+}
+
+// Stage 2 — storage foundation. Every private row carries tenant + company and
+// a composite FK so cross-company references are impossible at the database level.
+model FileObject {
+  id            String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId      String          @map("tenant_id") @db.Uuid
+  companyId     String          @map("company_id") @db.Uuid
+  uploadedById  String?         @map("uploaded_by_id") @db.Uuid
+  provider      StorageProvider
+  bucket        String          @db.VarChar(120)
+  objectKey     String          @map("object_key") @db.VarChar(500)
+  originalName  String          @map("original_name") @db.VarChar(255)
+  contentType   String          @map("content_type") @db.VarChar(120)
+  sizeBytes     BigInt          @map("size_bytes")
+  sha256        String          @db.VarChar(64)
+  deletedAt     DateTime?       @map("deleted_at") @db.Timestamptz(3)
+  createdAt     DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
+  company       Company         @relation(fields: [tenantId, companyId], references: [tenantId, id], onDelete: Restrict, onUpdate: Restrict)
+  uploadedBy    User?           @relation("FileUploader", fields: [tenantId, companyId, uploadedById], references: [tenantId, companyId, id], onDelete: Restrict, onUpdate: Restrict)
+  documentTemplates DocumentTemplate[]
+  documentVersions  DocumentVersion[]
+
+  @@unique([tenantId, companyId, id])
+  @@unique([tenantId, companyId, provider, bucket, objectKey])
+  @@index([tenantId, companyId, createdAt])
+  @@map("file_objects")
+}
+
+model DocumentTemplate {
+  id              String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId        String           @map("tenant_id") @db.Uuid
+  companyId       String           @map("company_id") @db.Uuid
+  code            String           @db.VarChar(60)
+  name            String           @db.VarChar(160)
+  kind            DocumentKind
+  description     String?          @db.VarChar(500)
+  defaultFileName String           @map("default_file_name") @db.VarChar(255)
+  isActive        Boolean          @default(true) @map("is_active")
+  createdAt       DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime         @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+  company         Company          @relation(fields: [tenantId, companyId], references: [tenantId, id], onDelete: Restrict, onUpdate: Restrict)
+  documents       Document[]
+
+  @@unique([tenantId, companyId, id])
+  @@unique([tenantId, companyId, code])
+  @@index([tenantId, companyId, kind])
+  @@map("document_templates")
+}
+
+model Document {
+  id               String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId         String           @map("tenant_id") @db.Uuid
+  companyId        String           @map("company_id") @db.Uuid
+  employeeId       String?          @map("employee_id") @db.Uuid
+  templateId       String?          @map("template_id") @db.Uuid
+  title            String           @db.VarChar(200)
+  kind             DocumentKind
+  status           DocumentStatus   @default(DRAFT)
+  currentVersionId String?          @map("current_version_id") @db.Uuid
+  createdAt        DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime         @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+  company          Company          @relation(fields: [tenantId, companyId], references: [tenantId, id], onDelete: Restrict, onUpdate: Restrict)
+  employee         Employee?        @relation(fields: [tenantId, companyId, employeeId], references: [tenantId, companyId, id], onDelete: Restrict, onUpdate: Restrict)
+  template         DocumentTemplate? @relation(fields: [tenantId, companyId, templateId], references: [tenantId, companyId, id], onDelete: Restrict, onUpdate: Restrict)
+  versions         DocumentVersion[]     @relation("DocumentVersions")
+  currentVersion   DocumentVersion?      @relation("DocumentCurrentVersion", fields: [tenantId, companyId, currentVersionId], references: [tenantId, companyId, id], onDelete: Restrict, onUpdate: Restrict)
+  signatures       DocumentSignature[]
+
+  @@unique([tenantId, companyId, id])
+  @@unique([tenantId, companyId, currentVersionId])
+  @@index([tenantId, companyId, status])
+  @@index([tenantId, companyId, employeeId])
+  @@index([tenantId, companyId, kind])
+  @@map("documents")
+}
+
+model DocumentVersion {
+  id            String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId      String      @map("tenant_id") @db.Uuid
+  companyId     String      @map("company_id") @db.Uuid
+  documentId    String      @map("document_id") @db.Uuid
+  versionNumber Int         @map("version_number")
+  fileObjectId  String      @map("file_object_id") @db.Uuid
+  note          String?     @db.VarChar(500)
+  createdBy     String?     @map("created_by") @db.Uuid
+  createdAt     DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
+  company       Company     @relation(fields: [tenantId, companyId], references: [tenantId, id], onDelete: Restrict, onUpdate: Restrict)
+  document      Document    @relation("DocumentVersions", fields: [tenantId, companyId, documentId], references: [tenantId, companyId, id], onDelete: Restrict, onUpdate: Restrict)
+  fileObject    FileObject  @relation(fields: [tenantId, companyId, fileObjectId], references: [tenantId, companyId, id], onDelete: Restrict, onUpdate: Restrict)
+  signatures    DocumentSignature[]
+
+  @@unique([tenantId, companyId, id])
+  @@unique([tenantId, companyId, documentId, versionNumber])
+  @@unique([tenantId, companyId, fileObjectId])
+  @@index([tenantId, companyId, documentId])
+  @@map("document_versions")
+}
+
+model DocumentSignature {
+  id           String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId     String          @map("tenant_id") @db.Uuid
+  companyId    String          @map("company_id") @db.Uuid
+  documentId   String          @map("document_id") @db.Uuid
+  versionId    String          @map("version_id") @db.Uuid
+  signerUserId String?         @map("signer_user_id") @db.Uuid
+  signerName   String          @map("signer_name") @db.VarChar(160)
+  role         SignatureRole
+  status       SignatureStatus @default(PENDING)
+  signedAt     DateTime?       @map("signed_at") @db.Timestamptz(3)
+  evidence     Json            @default("{}") @db.JsonB
+  createdAt    DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
+  company      Company         @relation(fields: [tenantId, companyId], references: [tenantId, id], onDelete: Restrict, onUpdate: Restrict)
+  document     Document        @relation(fields: [tenantId, companyId, documentId], references: [tenantId, companyId, id], onDelete: Restrict, onUpdate: Restrict)
+  version      DocumentVersion @relation(fields: [tenantId, companyId, versionId], references: [tenantId, companyId, id], onDelete: Restrict, onUpdate: Restrict)
+  signerUser   User?           @relation(fields: [tenantId, companyId, signerUserId], references: [tenantId, companyId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([tenantId, companyId, id])
+  @@unique([tenantId, companyId, versionId, role, signerName])
+  @@index([tenantId, companyId, documentId])
+  @@index([tenantId, companyId, status])
+  @@map("document_signatures")
 }

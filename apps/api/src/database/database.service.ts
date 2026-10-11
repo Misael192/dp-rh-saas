@@ -13,8 +13,8 @@ export class DatabaseService extends PrismaClient implements OnModuleInit, OnMod
     await this.$connect();
     const [role] = await this.$queryRaw<Array<{ rolsuper: boolean; rolbypassrls: boolean }>>`SELECT rolsuper, rolbypassrls FROM pg_roles WHERE rolname = current_user`;
     if (!role || role.rolsuper || role.rolbypassrls) throw new Error('Runtime PostgreSQL role must not be superuser or BYPASSRLS');
-    const tables = await this.$queryRaw<Array<{ relrowsecurity: boolean; relforcerowsecurity: boolean }>>`SELECT relrowsecurity, relforcerowsecurity FROM pg_class WHERE relnamespace = current_schema()::regnamespace AND relname IN ('tenants','companies','users','auth_sessions','mfa_credentials','mfa_recovery_codes','employees','audit_logs')`;
-    if (tables.length !== 8 || tables.some(table => !table.relrowsecurity || !table.relforcerowsecurity)) throw new Error('Required PostgreSQL tables must enable and force RLS');
+    const tables = await this.$queryRaw<Array<{ relrowsecurity: boolean; relforcerowsecurity: boolean }>>`SELECT relrowsecurity, relforcerowsecurity FROM pg_class WHERE relnamespace = current_schema()::regnamespace AND relname IN ('tenants','companies','users','auth_sessions','mfa_credentials','mfa_recovery_codes','employees','audit_logs','file_objects','document_templates','documents','document_versions','document_signatures')`;
+    if (tables.length !== 13 || tables.some(table => !table.relrowsecurity || !table.relforcerowsecurity)) throw new Error('Required PostgreSQL tables must enable and force RLS');
   }
   async onModuleDestroy() { await this.$disconnect(); }
   async withScope<T>(scope: DatabaseScope, callback: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> {
