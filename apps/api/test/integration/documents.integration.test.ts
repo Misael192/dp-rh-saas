@@ -162,8 +162,8 @@ afterAll(async () => {
     const where = { tenantId: { in: [ids.tenantA, ids.tenantB] } };
     await adminDatabase.$transaction(async (tx) => {
       await tx.documentSignature.deleteMany({ where });
-      await tx.documentVersion.deleteMany({ where });
       await tx.document.updateMany({ where, data: { currentVersionId: null } });
+      await tx.documentVersion.deleteMany({ where });
       await tx.document.deleteMany({ where });
       await tx.documentTemplate.deleteMany({ where });
       await tx.fileObject.deleteMany({ where });
@@ -288,7 +288,7 @@ describe('Stage 2 documents: RLS isolation, versioning, signatures and download 
   });
 
   it('token download works and rejects remapped/tampered/expired payloads', async () => {
-    const ok = await request(app.getHttpServer()).get(`${base}/documents/${documentId}/download`).setQuery({ token: downloadToken }).expect(200);
+    const ok = await request(app.getHttpServer()).get(`${base}/documents/${documentId}/download`).query({ token: downloadToken }).expect(200);
     expect(ok.body.versionNumber).toBe(2);
     expect(ok.body.fileName).toBe('contrato-v2.pdf');
 
@@ -298,13 +298,13 @@ describe('Stage 2 documents: RLS isolation, versioning, signatures and download 
     // remap: attacker re-signs a token bound to their own company — the file
     // is not visible in that scope, so the route must fail closed (404).
     const remapped = signDownloadToken({ ...payload, companyId: ids.companyB, userId: ids.adminB }, downloadSecret);
-    await request(app.getHttpServer()).get(`${base}/documents/${documentId}/download`).setQuery({ token: remapped }).expect(404);
+    await request(app.getHttpServer()).get(`${base}/documents/${documentId}/download`).query({ token: remapped }).expect(404);
     // tampered mac
     const [v, b, m] = downloadToken.split('.');
-    await request(app.getHttpServer()).get(`${base}/documents/${documentId}/download`).setQuery({ token: `${v}.${b}.${m.slice(0, -2)}ff` }).expect(403);
+    await request(app.getHttpServer()).get(`${base}/documents/${documentId}/download`).query({ token: `${v}.${b}.${m.slice(0, -2)}ff` }).expect(403);
     // expired
     const expired = signDownloadToken({ ...payload, exp: Math.floor(Date.now() / 1000) - 5 }, downloadSecret);
-    await request(app.getHttpServer()).get(`${base}/documents/${documentId}/download`).setQuery({ token: expired }).expect(403);
+    await request(app.getHttpServer()).get(`${base}/documents/${documentId}/download`).query({ token: expired }).expect(403);
   });
 
   it('upload whitelist rejects disallowed extensions with 415', async () => {
