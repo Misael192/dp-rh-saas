@@ -128,7 +128,7 @@ export class PrismaDocumentsRepository extends DocumentsRepository {
         where: { tenantId_companyId_id: { tenantId: actor.tenantId, companyId: actor.companyId, id: documentId } },
         data: { currentVersionId: version.id },
       });
-      await this.audit(tx, actor, 'document.version.added', documentId, { versionNumber, fileId: fileObject.id, sha256: file.sha256 });
+      await this.audit(tx, actor, 'document.version_uploaded', documentId, { versionNumber, fileId: fileObject.id, sha256: file.sha256 });
       if (updated.status === 'PUBLISHED') { /* pointer already moved; published docs keep their state */ }
       return { ...version, fileObject } as any;
     });
@@ -160,7 +160,7 @@ export class PrismaDocumentsRepository extends DocumentsRepository {
     try {
       return this.database.withScope(actor, async (tx) => {
         const template = await tx.documentTemplate.create({ data: { ...actor, ...input, description: input.description ?? null } });
-        await this.audit(tx, actor, 'document_template.created', template.id, { code: input.code });
+        await this.audit(tx, actor, 'document.template_created', template.id, { code: input.code });
         return template as DocumentTemplateRecord;
       });
     } catch (error) { return this.rethrowWriteError(error); }
@@ -196,8 +196,12 @@ export class PrismaDocumentsRepository extends DocumentsRepository {
           const signer = await tx.user.findFirst({ where: { tenantId: actor.tenantId, companyId: actor.companyId, id: data.signerUserId, isActive: true }, select: { id: true } });
           if (!signer) throw new NotFoundInScopeError('signer');
         }
+        // When signing on behalf of a platform user, the name is taken from that user's record.
+        const signerName = data.signerName ?? (data.signerUserId
+          ? await tx.user.findFirst({ where: { tenantId: actor.tenantId, companyId: actor.companyId, id: data.signerUserId }, select: { name: true } }).then((user) => user?.name ?? 'Assinante')
+          : 'Assinante');
         const signature = await tx.documentSignature.create({
-          data: { tenantId: actor.tenantId, companyId: actor.companyId, documentId, versionId: document.currentVersionId, signerName: data.signerName, role: data.role, signerUserId: data.signerUserId ?? null, evidence: {} },
+          data: { tenantId: actor.tenantId, companyId: actor.companyId, documentId, versionId: document.currentVersionId, signerName, role: data.role, signerUserId: data.signerUserId ?? null, evidence: {} },
           select: signatureShape,
         });
         await this.audit(tx, actor, 'document_signature.pending', signature.id, { documentId, role: data.role });
@@ -222,7 +226,7 @@ export class PrismaDocumentsRepository extends DocumentsRepository {
           : { status: 'REJECTED', evidence: evidence as Prisma.InputJsonValue },
         select: signatureShape,
       });
-      await this.audit(tx, actor, decision === 'SIGNED' ? 'document_signature.signed' : 'document_signature.rejected', signature.id, { documentId: existing.documentId });
+      await this.audit(tx, actor, decision === 'SIGNED' ? 'document.signed' : 'document_signature.rejected', signature.id, { documentId: existing.documentId });
       return signature as unknown as SignatureRecord;
     });
   }

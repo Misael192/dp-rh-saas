@@ -1,4 +1,5 @@
-import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, InternalServerErrorException, NotFoundException } from '@nestjs/common';
+import { createHash } from 'node:crypto';
+import { BadRequestException, ConflictException, ForbiddenException, HttpException, HttpStatus, Inject, Injectable, InternalServerErrorException, NotFoundException, PayloadTooLargeException } from '@nestjs/common';
 import type { AuthUser } from '../auth/auth.types';
 import { AppConfig } from '../common/config';
 import { allowedContentType, StorageAdapter } from '../storage/storage.adapter';
@@ -14,6 +15,16 @@ import {
 import { DuplicateSignatureSignerError, DuplicateTemplateCodeError } from './domain/documents.repository';
 
 const MAX_UPLOAD_BYTES = 20 * 1024 * 1024;
+
+/** Content types the multipart endpoint accepts (extension whitelist from the storage port). */
+const ALLOWED_UPLOAD_CONTENT_TYPES = new Set<string>([
+  'application/pdf', 'image/png', 'image/jpeg', 'image/webp', 'image/gif',
+  'text/plain', 'application/rtf', 'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'text/csv',
+]);
 
 /** Public representations never leak tenantId/companyId/userId scoping columns. */
 export function fileView(file: { id: string; originalName: string; contentType: string; sizeBytes: bigint; sha256: string; createdAt: Date } | null) {
@@ -105,12 +116,14 @@ export class DocumentsService {
   }
 
   /** Uploads the binary to the configured provider and appends a new immutable version. */
-  async addVersion(user: AuthUser, documentId: string, upload: { buffer: Buffer; originalName: string }, input: AddVersionInput) {
+  async addVersion(user: AuthUser, documentId: string, upload: { buffer: Buffer; originalName: string; mimeType?: string }, input: AddVersionInput) {
     this.requireStaff(user);
     const file = this.validateUpload(upload);
     const existing = await this.documents.getDocument(this.scope(user), documentId);
     if (!existing) throw new NotFoundException('Documento não encontrado.');
     if (existing.status === 'ARCHIVED') throw new ConflictException('Documento arquivado não aceita novas versões.');
+    // sha256 is computed server-side from the trusted buffer, never from client data.
+    const sha256 = createHash('sha256').update(file.buffer).digest('hex');
     const stored = await this.storage.upload({
       tenantId: user.tenantId, companyId: user.companyId,
       fileName: file.originalName, contentType: file.contentType, body: file.buffer,
@@ -119,7 +132,7 @@ export class DocumentsService {
       const version = await this.documents.addVersion(this.actor(user), documentId, {
         provider: stored.provider, bucket: stored.bucket, objectKey: stored.objectKey,
         originalName: file.originalName, contentType: file.contentType,
-        sizeBytes: stored.sizeBytes, sha256: stored.sha256,
+        sizeBytes: BigInt(stored.sizeBytes), sha256,
       }, input);
       return versionView(version);
     } catch (error) {
@@ -204,12 +217,18 @@ export class DocumentsService {
     } catch (error) { return this.rethrow(error); }
   }
 
-  private validateUpload(upload: { buffer: Buffer; originalName: string }) {
+  private validateUpload(upload: { buffer: Buffer; originalName: string; mimeType?: string }) {
     const originalName = (upload.originalName ?? '').split('/').pop()?.trim() ?? '';
     const contentType = allowedContentType(originalName);
-    if (!contentType) throw new BadRequestException('Tipo de arquivo não permitido. Envie PDF, imagem, texto ou planilha.');
+    if (!contentType) throw new HttpException(
+      'Tipo de arquivo não permitido.' === '' ? '' : ''Tipo de arquivo não permitido. Envie PDF, imagem, texto ou planilha.');
+    // Defense in depth: reject mismatched declared MIME before touching storage.
+    if (upload.mimeType && upload.mimeType !== 'application/octet-stream' && !ALLOWED_UPLOAD_CONTENT_TYPES.has(upload.mimeType)) {
+      throw new HttpException(
+      'Tipo de arquivo não permitido.' === '' ? '' : ''Tipo MIME não suportado.');
+    }
     if (!upload.buffer || upload.buffer.byteLength === 0) throw new BadRequestException('O arquivo está vazio.');
-    if (upload.buffer.byteLength > MAX_UPLOAD_BYTES) throw new BadRequestException('Arquivo maior que 20 MB.');
+    if (upload.buffer.byteLength > MAX_UPLOAD_BYTES) throw new PayloadTooLargeException('Arquivo maior que o limite de upload.');
     return { buffer: upload.buffer, originalName, contentType };
   }
 

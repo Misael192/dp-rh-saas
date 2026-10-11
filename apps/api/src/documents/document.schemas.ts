@@ -38,10 +38,13 @@ export const addVersionSchema = z.object({
 
 export const createSignatureSchema = z.object({
   role: signatureRoleSchema,
-  signerName: z.string().trim().min(2).max(160),
+  signerName: z.string().trim().min(2).max(160).optional(),
   /** Optional link to a platform user (the manual signature is still recorded by name). */
   signerUserId: uuidSchema.optional(),
-}).strict();
+}).strict().refine(
+  (value) => Boolean(value.signerName || value.signerUserId),
+  { message: 'Informe signerName ou signerUserId.', path: ['signerName'] },
+);
 
 export const signDocumentSchema = z.object({
   /** Free-form evidence captured at signing time (ip/ua declarations are NOT trusted verbatim). */
