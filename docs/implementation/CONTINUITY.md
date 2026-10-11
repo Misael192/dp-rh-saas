@@ -4,7 +4,7 @@
 
 Desenvolver um SaaS DP/RH incremental, com Next.js 15, NestJS, Prisma, PostgreSQL e Redis, isolamento multiempresa, JWT/refresh/RBAC/2FA e interface própria. O usuário exige documentação, testes e aprovação antes de cada próxima etapa.
 
-O usuário autorizou iniciar/transferir o projeto para `Misael192/dp-rh-saas`: “Joga todo o projeto ou inicia ele na dp-rh-saas”. Essa autorização inclui publicar os fontes da Etapa 1 nesse repositório. **A Etapa 2 aguarda aprovação. Não houve autorização para implantação em produção.**
+O usuário autorizou iniciar/transferir o projeto para `Misael192/dp-rh-saas`: “Joga todo o projeto ou inicia ele na dp-rh-saas”. A Etapa 1 foi publicada e a Etapa 2 foi autorizada e mergeada. O hotfix para a Etapa 2 está em branch/PR separado e **não deve ser mergeado sem aprovação explícita**. Não houve autorização para implantação em produção.
 
 ## Local atual e procedência
 
@@ -24,6 +24,12 @@ Autenticação e sessões revogáveis, refresh rotativo, CSRF, rate limit Redis,
 Schema e migration inicial com FORCE RLS, escopo tenant/empresa, FKs compostas, índices e auditoria append-only. Role runtime sem superuser/BYPASSRLS. Provisionamento create-only com senha em arquivo privado e seed sintético bloqueado em produção. Infraestrutura Docker/Compose, ingresso TLS, backup/restauração, CI e testes reais PostgreSQL/Redis/Chromium.
 
 Next 15.5.27, React 19, Nest 11, Prisma 6.19.3 com adapter oficial PrismaPg, Node 22–24. Versões resolvidas no lockfile. Consulte [STAGE-1.md](STAGE-1.md) para os dez tópicos de entrega e etapas futuras; [DEPLOYMENT.md](DEPLOYMENT.md) para operação.
+
+## Etapa 2 — documentos e storage
+
+**Status:** Mergeada na main; hotfix em andamento para corrigir typecheck de `SignatureView`, completar a documentação e estabilizar os testes de integração da CI. O hotfix está no branch `hotfix/stage2-typecheck-and-docs`; aguardar nova CI, revisão e aprovação explícita antes do merge. A Etapa 2 não foi implantada em produção.
+
+O PR #1 foi mergeado em `2ce60b420b6f1ed727df8292aaa66145f87af02e`. O workflow desse commit falhou no typecheck: `apps/web/src/components/documents-view.tsx` acessava `signerUserId`, ausente no contrato `SignatureView`. O commit `a2fe61f` acrescentou o campo e o serializador; seu workflow passou pelo typecheck, mas falhou em um fixture unitário com escopos tenant/empresa divergentes. O fixture foi corrigido. O run `38115604182` passou por typecheck/unit tests e falhou na integração, revelando colisões de IDs Prisma, teardown fora da ordem, `.setQuery()` não suportado e configuração de storage ausente na suíte Stage 1. O run `38116220981` ainda falhou em cinco casos: a relação `versions` usava projeção Prisma sem `select`, e 20 testes Stage 1 foram skipped ao inicializar sem storage configurado. O run `38116831216` passou os 20 testes Stage 1 e 26/29 testes totais; a primeira falha foi apenas a expectativa de ordenação das versões (`[2,1]` retornado pelo `orderBy desc`, contra `[1,2]` esperado), e as falhas de assinatura/auditoria seguintes foram cascatas da interrupção desse teste. A expectativa foi alinhada localmente. `npm test` passou 23/23, `npm run typecheck` passou em todos os workspaces e `npm run build` passou em 2026-10-11. A integração RLS não pôde ser reproduzida localmente porque não há `.env` nem banco de teste local configurado; a nova revisão ainda precisa de CI verde. Detalhes e cronologia estão em [STAGE-2.md](STAGE-2.md) e [history/2026-10-11-stage2-final.md](history/2026-10-11-stage2-final.md).
 
 ## Transferência e validação no novo destino
 
@@ -75,4 +81,4 @@ O workflow foi adaptado à raiz e validado sintaticamente, mas ainda não teve e
 
 ## Próximo passo exato
 
-**Aguardar aprovação explícita da Etapa 2.** A Etapa 1 está publicada no novo repositório e o registro de origem aponta para ele. Ao receber a aprovação, detalhar primeiro escopo/aceite da próxima entrega; preserve o histórico e todas as alterações locais. Antes de qualquer implantação de produção, confirmar CI, credenciais/ingresso, backup externo, restauração e operação no destino definitivo. Não marcar módulos planejados como entregues.
+**Publicar o ajuste de ordenação do teste Stage 2 e aguardar CI remota verde, revisão e aprovação explícita para merge do PR de hotfix da Etapa 2.** Não fazer merge nem iniciar a Etapa 3 antes de autorização. Preserve o histórico e todas as alterações locais. Antes de qualquer implantação de produção, confirmar CI, credenciais/ingresso, backup externo, restauração e operação no destino definitivo. Não marcar módulos planejados como entregues.

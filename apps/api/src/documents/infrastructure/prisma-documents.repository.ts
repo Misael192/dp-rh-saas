@@ -84,7 +84,7 @@ export class PrismaDocumentsRepository extends DocumentsRepository {
       where: { ...scope, id },
       select: {
         ...this.documentSelect(),
-        ...(includeVersions ? { versions: { orderBy: { versionNumber: 'desc' }, ...versionSelect } } : {}),
+        ...(includeVersions ? { versions: { orderBy: { versionNumber: 'desc' }, select: versionSelect } } : {}),
         signatures: { orderBy: [{ createdAt: 'asc' }, { id: 'asc' }], select: signatureShape },
       },
     }).then((document) => (document ? { ...document, employeeUserId: document.employee?.userId ?? null } as unknown as DocumentRecord : null)));
@@ -99,7 +99,7 @@ export class PrismaDocumentsRepository extends DocumentsRepository {
         throw new NotFoundInScopeError('template');
       }
       const document = await tx.document.create({
-        data: { ...actor, title: input.title, kind: input.kind, employeeId: input.employeeId ?? null, templateId: input.templateId ?? null },
+        data: { tenantId: actor.tenantId, companyId: actor.companyId, title: input.title, kind: input.kind, employeeId: input.employeeId ?? null, templateId: input.templateId ?? null },
         select: {
           id: true, employeeId: true, templateId: true, title: true, kind: true, status: true,
           currentVersionId: true, createdAt: true, updatedAt: true,
@@ -144,7 +144,7 @@ export class PrismaDocumentsRepository extends DocumentsRepository {
       if (!document) throw new NotFoundInScopeError('document');
       const last = await tx.documentVersion.findFirst({ where: { tenantId: actor.tenantId, companyId: actor.companyId, documentId }, orderBy: { versionNumber: 'desc' }, select: { versionNumber: true } });
       const versionNumber = (last?.versionNumber ?? 0) + 1;
-      const fileObject = await tx.fileObject.create({ data: { ...actor, ...file, uploadedById: actor.id } });
+      const fileObject = await tx.fileObject.create({ data: { tenantId: actor.tenantId, companyId: actor.companyId, ...file, uploadedById: actor.id } });
       const version = await tx.documentVersion.create({
         data: { tenantId: actor.tenantId, companyId: actor.companyId, documentId, versionNumber, fileObjectId: fileObject.id, note: input.note ?? null, createdBy: actor.id },
       });
@@ -183,7 +183,7 @@ export class PrismaDocumentsRepository extends DocumentsRepository {
   createTemplate(actor: { tenantId: string; companyId: string; id: string }, input: CreateTemplateInput): Promise<DocumentTemplateRecord> {
     try {
       return this.database.withScope(actor, async (tx) => {
-        const template = await tx.documentTemplate.create({ data: { ...actor, ...input, description: input.description ?? null } });
+        const template = await tx.documentTemplate.create({ data: { tenantId: actor.tenantId, companyId: actor.companyId, ...input, description: input.description ?? null } });
         await this.audit(tx, actor, 'document.template_created', template.id, { code: input.code });
         return template as DocumentTemplateRecord;
       });

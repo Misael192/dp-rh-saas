@@ -10,7 +10,6 @@ import { CsrfGuard } from './auth/csrf.guard';
 import { RolesGuard } from './auth/roles.guard';
 import { RateLimitGuard } from './common/rate-limit.guard';
 import { EmployeesModule } from './employees/employees.module';
-import { StorageModule } from './storage/storage.module';
 import { DocumentsModule } from './documents/documents.module';
 
 @Global()
@@ -18,7 +17,7 @@ import { DocumentsModule } from './documents/documents.module';
 class ConfigurationModule {}
 
 @Module({
-  imports: [ConfigurationModule, DatabaseModule, AuthModule, EmployeesModule, StorageModule, DocumentsModule],
+  imports: [ConfigurationModule, DatabaseModule, AuthModule, EmployeesModule, DocumentsModule],
   controllers: [HealthController],
   providers: [
     { provide: APP_GUARD, useClass: CsrfGuard },
