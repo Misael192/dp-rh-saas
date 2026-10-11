@@ -34,6 +34,8 @@ export interface DocumentRecord {
   id: string; employeeId: string | null; templateId: string | null; title: string;
   kind: DocumentKind; status: DocumentStatus; currentVersionId: string | null;
   createdAt: Date; updatedAt: Date;
+  /** Linked platform user (employees.user_id) — used for the EMPLOYEE self-scope gate. */
+  employeeUserId?: string | null;
   currentVersion?: DocumentVersionRecord | null;
   versions?: DocumentVersionRecord[];
   signatures?: SignatureRecord[];
@@ -61,6 +63,10 @@ export abstract class DocumentsRepository {
   abstract updateDocument(actor: DocumentActor, id: string, input: UpdateDocumentInput): Promise<DocumentRecord | null>;
   /** Persists an already-uploaded file row plus the new version and moves the current pointer. */
   abstract addVersion(actor: DocumentActor, documentId: string, file: NewFileInput, input: AddVersionInput): Promise<DocumentVersionRecord>;
+  /** Append-only audit trail written inside the repository scope (never trusts client metadata). */
+  abstract recordAudit(actor: DocumentActor, action: string, entityId: string, metadata: Record<string, unknown>): Promise<void>;
+  /** Documents visible to a non-staff user: own employee documents plus pending signatures. */
+  abstract listVisibleToUser(scope: CompanyScope, userId: string): Promise<DocumentRecord[]>;
   abstract getFile(scope: CompanyScope, fileId: string): Promise<FileObjectRecord | null>;
   abstract findFileBySha(scope: CompanyScope, sha256: string): Promise<FileObjectRecord | null>;
   abstract listTemplates(scope: CompanyScope, kind?: DocumentKind): Promise<DocumentTemplateRecord[]>;

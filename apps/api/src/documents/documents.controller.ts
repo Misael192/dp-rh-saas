@@ -1,11 +1,11 @@
-import { BadRequestException, Body, Controller, Get, Inject, Param, Patch, Post, Query, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, HttpCode, Inject, Param, Patch, Post, Query, UploadedFile, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { z } from 'zod';
 import type { AuthUser } from '../auth/auth.types';
-import { CurrentUser } from '../auth/decorators';
+import { CurrentUser, Public } from '../auth/decorators';
 import {
   addVersionSchema, createDocumentSchema, createSignatureSchema, createTemplateSchema,
-  documentIdSchema, documentQuerySchema, rejectSignatureSchema, signDocumentSchema,
+  documentIdSchema, documentQuerySchema, downloadTokenSchema, rejectSignatureSchema, signDocumentSchema,
   templateIdSchema, templateQuerySchema, updateDocumentSchema, updateTemplateSchema,
 } from './document.schemas';
 import { DocumentsService } from './documents.service';
@@ -74,6 +74,14 @@ export class DocumentsController {
   @Get(':id/download-url')
   downloadUrl(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     return this.documents.downloadUrl(user, validated(documentIdSchema, id));
+  }
+
+  /** Token-only public capability route (no session). The HMAC payload binds
+   * the file to its company scope and uploader; tampered payloads are rejected. */
+  @Public() @HttpCode(200) @Get(':id/download')
+  download(@Param('id') id: string, @Query() query: unknown) {
+    const parsed = validated(downloadTokenSchema, query);
+    return this.documents.downloadUrlForToken(parsed.token, validated(documentIdSchema, id));
   }
 
   @Get(':id/signatures')

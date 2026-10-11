@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { BadRequestException, ConflictException, ForbiddenException, HttpException, HttpStatus, Inject, Injectable, InternalServerErrorException, NotFoundException, PayloadTooLargeException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, HttpException, Inject, Injectable, InternalServerErrorException, NotFoundException, PayloadTooLargeException } from '@nestjs/common';
 import type { AuthUser } from '../auth/auth.types';
 import { AppConfig } from '../common/config';
 import { allowedContentType, StorageAdapter } from '../storage/storage.adapter';
@@ -13,8 +13,6 @@ import {
   NoCurrentVersionError, NotFoundInScopeError, PublishWithoutVersionError, SignatureAlreadyResolvedError,
 } from './infrastructure/prisma-documents.repository';
 import { DuplicateSignatureSignerError, DuplicateTemplateCodeError } from './domain/documents.repository';
-
-const MAX_UPLOAD_BYTES = 20 * 1024 * 1024;
 
 /** Content types the multipart endpoint accepts (extension whitelist from the storage port). */
 const ALLOWED_UPLOAD_CONTENT_TYPES = new Set<string>([
@@ -84,19 +82,29 @@ export class DocumentsService {
     if (user.role !== 'ADMIN' && user.role !== 'HR') throw new ForbiddenException('Acesso restrito à administração e ao RH.');
   }
 
+  /** EMPLOYEE/MANAGER may only touch documents of their own employee record or
+   * documents where they are a signer. Returns true when the user is staff. */
+  private canAccessDocument(user: AuthUser, document: DocumentRecord): boolean {
+    if (user.role === 'ADMIN' || user.role === 'HR') return true;
+    if (document.employeeUserId && document.employeeUserId === user.id) return true;
+    return Boolean(document.signatures?.some((signature) => signature.signerUserId === user.id));
+  }
+
   private scope(user: AuthUser) { return { tenantId: user.tenantId, companyId: user.companyId }; }
   private actor(user: AuthUser) { return { tenantId: user.tenantId, companyId: user.companyId, id: user.id }; }
 
   async list(user: AuthUser, query: DocumentQuery) {
-    this.requireStaff(user);
+    if (user.role === 'EMPLOYEE' || user.role === 'MANAGER') {
+      const visible = await this.documents.listVisibleToUser(this.scope(user), user.id);
+      return { items: visible.map((item) => documentView(item)), total: visible.length, page: 1, pageSize: visible.length };
+    }
     const page = await this.documents.listDocuments(this.scope(user), query);
     return { items: page.items.map((item) => documentView(item)), total: page.total, page: query.page, pageSize: query.pageSize };
   }
 
   async get(user: AuthUser, id: string) {
-    this.requireStaff(user);
     const document = await this.documents.getDocument(this.scope(user), id, true);
-    if (!document) throw new NotFoundException('Documento não encontrado.');
+    if (!document || !this.canAccessDocument(user, document)) throw new NotFoundException('Documento não encontrado.');
     return documentView(document, { includeVersions: true });
   }
 
@@ -134,6 +142,7 @@ export class DocumentsService {
         originalName: file.originalName, contentType: file.contentType,
         sizeBytes: BigInt(stored.sizeBytes), sha256,
       }, input);
+      await this.auditVersionUploaded(user, documentId, version);
       return versionView(version);
     } catch (error) {
       // Compensate: remove the orphan object if the transaction could not commit.
@@ -142,11 +151,17 @@ export class DocumentsService {
     }
   }
 
+  /** Append-only audit trail for the uploaded version (same scope as the write). */
+  private async auditVersionUploaded(actor: AuthUser, documentId: string, version: { id: string; versionNumber: number; fileObjectId?: string }) {
+    await this.documents.recordAudit(this.actor(actor), 'document.version_uploaded', documentId, {
+      versionId: version.id, versionNumber: version.versionNumber, fileObjectId: version.fileObjectId ?? null,
+    });
+  }
+
   /** Signed URL through the provider plus an HMAC capability bound to user+scope+expiry. */
   async downloadUrl(user: AuthUser, documentId: string) {
-    this.requireStaff(user);
     const document = await this.documents.getDocument(this.scope(user), documentId);
-    if (!document) throw new NotFoundException('Documento não encontrado.');
+    if (!document || !this.canAccessDocument(user, document)) throw new NotFoundException('Documento não encontrado.');
     if (!document.currentVersion?.fileObject) throw new NotFoundException('O documento ainda não possui versão publicada.');
     const file = document.currentVersion.fileObject;
     const ttl = this.config.values.DOWNLOAD_URL_TTL_SECONDS;
@@ -155,11 +170,35 @@ export class DocumentsService {
       { fileName: file.originalName, contentType: file.contentType, ttlSeconds: ttl },
     );
     const secret = this.downloadSecret();
+    // Capability binds the file to the company scope and the current version's
+    // uploader (never a client-supplied id). A remapped payload fails verification.
     const token = signDownloadToken(
-      { tenantId: user.tenantId, companyId: user.companyId, fileId: file.id, userId: user.id, exp: Math.floor(Date.now() / 1000) + ttl },
+      { tenantId: user.tenantId, companyId: user.companyId, fileId: file.id, userId: document.currentVersion.createdBy ?? user.id, exp: Math.floor(Date.now() / 1000) + ttl },
       secret,
     );
     return { url: signed.url, expiresAt: signed.expiresAt.toISOString(), token, fileName: file.originalName, versionNumber: document.currentVersion.versionNumber };
+  }
+
+  /** Token-only download for contexts without a session (e.g. email links). The
+   * payload must match the file's owning company scope and its uploader. */
+  async downloadUrlForToken(token: string, documentId: string) {
+    const secret = this.downloadSecret();
+    const payload = verifyDownloadToken(token, secret);
+    if (!payload) throw new ForbiddenException('Link de download inválido ou expirado.');
+    const scope = { tenantId: payload.tenantId, companyId: payload.companyId };
+    const document = await this.documents.getDocument(scope, documentId);
+    if (!document) throw new NotFoundException('Documento não encontrado.');
+    const version = document.currentVersion;
+    const file = version?.fileObject;
+    if (!version || !file) throw new NotFoundException('O documento ainda não possui versão publicada.');
+    if (file.id !== payload.fileId) throw new ForbiddenException('Link de download não corresponde a este documento.');
+    if ((version.createdBy ?? payload.userId) !== payload.userId) throw new ForbiddenException('Link de download não corresponde a este documento.');
+    const ttl = this.config.values.DOWNLOAD_URL_TTL_SECONDS;
+    const signed = await this.storage.createDownloadUrl(
+      { provider: file.provider as 'SUPABASE' | 'S3', bucket: file.bucket, objectKey: file.objectKey },
+      { fileName: file.originalName, contentType: file.contentType, ttlSeconds: ttl },
+    );
+    return { url: signed.url, expiresAt: signed.expiresAt.toISOString(), fileName: file.originalName, versionNumber: version.versionNumber };
   }
 
   async listTemplates(user: AuthUser, kind?: CreateTemplateInput['kind']) {
@@ -220,15 +259,13 @@ export class DocumentsService {
   private validateUpload(upload: { buffer: Buffer; originalName: string; mimeType?: string }) {
     const originalName = (upload.originalName ?? '').split('/').pop()?.trim() ?? '';
     const contentType = allowedContentType(originalName);
-    if (!contentType) throw new HttpException(
-      'Tipo de arquivo não permitido.' === '' ? '' : ''Tipo de arquivo não permitido. Envie PDF, imagem, texto ou planilha.');
+    if (!contentType) throw new HttpException('Tipo de arquivo não permitido. Envie PDF, imagem, texto ou planilha.', 415);
     // Defense in depth: reject mismatched declared MIME before touching storage.
     if (upload.mimeType && upload.mimeType !== 'application/octet-stream' && !ALLOWED_UPLOAD_CONTENT_TYPES.has(upload.mimeType)) {
-      throw new HttpException(
-      'Tipo de arquivo não permitido.' === '' ? '' : ''Tipo MIME não suportado.');
+      throw new HttpException('Tipo MIME não suportado.', 415);
     }
     if (!upload.buffer || upload.buffer.byteLength === 0) throw new BadRequestException('O arquivo está vazio.');
-    if (upload.buffer.byteLength > MAX_UPLOAD_BYTES) throw new PayloadTooLargeException('Arquivo maior que o limite de upload.');
+    if (upload.buffer.byteLength > this.config.values.DOCUMENT_MAX_UPLOAD_BYTES) throw new PayloadTooLargeException('Arquivo maior que o limite de upload.');
     return { buffer: upload.buffer, originalName, contentType };
   }
 

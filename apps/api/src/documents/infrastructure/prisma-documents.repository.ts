@@ -44,11 +44,7 @@ export class PrismaDocumentsRepository extends DocumentsRepository {
         tx.document.findMany({
           where, orderBy: [{ updatedAt: 'desc' }, { id: 'asc' }],
           skip: (query.page - 1) * query.pageSize, take: query.pageSize,
-          select: {
-            id: true, employeeId: true, templateId: true, title: true, kind: true, status: true,
-            currentVersionId: true, createdAt: true, updatedAt: true,
-            currentVersion: { select: { ...versionInclude.select, signatures: { select: signatureShape } } },
-          },
+          select: this.documentSelect(),
         }),
         tx.document.count({ where }),
       ]);
@@ -56,17 +52,44 @@ export class PrismaDocumentsRepository extends DocumentsRepository {
     });
   }
 
+  /** Shared projection: document + current version (+ file/signatures) + the linked
+   * employee's platform user for the EMPLOYEE self-scope gate. */
+  private documentSelect() {
+    return {
+      id: true, employeeId: true, templateId: true, title: true, kind: true, status: true,
+      currentVersionId: true, createdAt: true, updatedAt: true,
+      employee: { select: { userId: true } },
+      currentVersion: { select: { ...versionInclude.select, signatures: { select: signatureShape } } },
+    } satisfies Prisma.DocumentSelect;
+  }
+
+  listVisibleToUser(scope: { tenantId: string; companyId: string }, userId: string): Promise<DocumentRecord[]> {
+    return this.database.withScope(scope, async (tx) => {
+      const employee = await tx.employee.findFirst({ where: { ...scope, userId }, select: { id: true } });
+      const documents = await tx.document.findMany({
+        where: {
+          ...scope,
+          OR: [
+            ...(employee ? [{ employeeId: employee.id }] : []),
+            { signatures: { some: { signerUserId: userId } } },
+          ],
+        },
+        orderBy: [{ updatedAt: 'desc' }, { id: 'asc' }],
+        select: this.documentSelect(),
+      });
+      return documents.map((document) => ({ ...document, employeeUserId: document.employee?.userId ?? null })) as unknown as DocumentRecord[];
+    });
+  }
+
   getDocument(scope: { tenantId: string; companyId: string }, id: string, includeVersions = false): Promise<DocumentRecord | null> {
     return this.database.withScope(scope, (tx) => tx.document.findFirst({
       where: { ...scope, id },
       select: {
-        id: true, employeeId: true, templateId: true, title: true, kind: true, status: true,
-        currentVersionId: true, createdAt: true, updatedAt: true,
-        currentVersion: { select: { ...versionInclude.select, signatures: { select: signatureShape } } },
+        ...this.documentSelect(),
         ...(includeVersions ? { versions: { orderBy: { versionNumber: 'desc' }, ...versionInclude } } : {}),
         signatures: { orderBy: [{ createdAt: 'asc' }, { id: 'asc' }], select: signatureShape },
       },
-    }) as Promise<DocumentRecord | null>);
+    }).then((document) => (document ? { ...document, employeeUserId: document.employee?.userId ?? null } as unknown as DocumentRecord : null)));
   }
 
   createDocument(actor: { tenantId: string; companyId: string; id: string }, input: CreateDocumentInput): Promise<DocumentRecord> {
@@ -87,6 +110,10 @@ export class PrismaDocumentsRepository extends DocumentsRepository {
       await this.audit(tx, actor, 'document.created', document.id, { kind: input.kind });
       return document as unknown as DocumentRecord;
     });
+  }
+
+  recordAudit(actor: { tenantId: string; companyId: string; id: string }, action: string, entityId: string, metadata: Record<string, unknown>): Promise<void> {
+    return this.database.withScope(actor, (tx) => this.audit(tx, actor, action, entityId, metadata));
   }
 
   updateDocument(actor: { tenantId: string; companyId: string; id: string }, id: string, input: UpdateDocumentInput): Promise<DocumentRecord | null> {
@@ -128,7 +155,6 @@ export class PrismaDocumentsRepository extends DocumentsRepository {
         where: { tenantId_companyId_id: { tenantId: actor.tenantId, companyId: actor.companyId, id: documentId } },
         data: { currentVersionId: version.id },
       });
-      await this.audit(tx, actor, 'document.version_uploaded', documentId, { versionNumber, fileId: fileObject.id, sha256: file.sha256 });
       if (updated.status === 'PUBLISHED') { /* pointer already moved; published docs keep their state */ }
       return { ...version, fileObject } as any;
     });
