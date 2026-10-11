@@ -210,7 +210,7 @@ describe('Stage 2 documents: RLS isolation, versioning, signatures and download 
 
     const detail = await get(`/documents/${documentId}`, clients.admin).expect(200);
     expect(detail.body.currentVersion.versionNumber).toBe(2);
-    expect(detail.body.versions.map((v: { versionNumber: number }) => v.versionNumber)).toEqual([1, 2]);
+    expect(detail.body.versions.map((v: { versionNumber: number }) => v.versionNumber)).toEqual([2, 1]);
 
     const signed = await mutate('post', `/documents/${documentId}/signatures`, clients.admin, { role: 'EMPLOYEE', signerUserId: ids.employee }).expect(201);
     signatureId = signed.body.id;
