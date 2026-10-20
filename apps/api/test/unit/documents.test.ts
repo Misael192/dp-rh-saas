@@ -209,7 +209,7 @@ describe('documents service (repository double)', () => {
   it('EMPLOYEE only sees own documents via listVisibleToUser', async () => {
     const { service, repository } = makeService();
     const admin = staffUser('ADMIN');
-    const employee = staffUser('EMPLOYEE');
+    const employee = { ...admin, id: randomUUID(), role: 'EMPLOYEE' as const };
     const doc = await service.create(admin, { title: 'Holerite', kind: 'PAYSLIP' });
     const stored = repository.documents[0];
     expect(stored.tenantId).toBe(admin.tenantId);
@@ -217,7 +217,7 @@ describe('documents service (repository double)', () => {
     const listed = await service.list(employee, { page: 1, pageSize: 20 });
     expect(listed.items.map((i: any) => i.id)).toEqual([doc.id]);
     expect(repository.listVisibleToCalls).toEqual([employee.id]);
-    const other = staffUser('EMPLOYEE');
+    const other = { ...employee, id: randomUUID() };
     expect((await service.list(other, { page: 1, pageSize: 20 })).items).toHaveLength(0);
   });
 

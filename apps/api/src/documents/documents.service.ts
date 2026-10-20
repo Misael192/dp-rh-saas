@@ -33,9 +33,10 @@ export function fileView(file: { id: string; originalName: string; contentType: 
   };
 }
 
-export function signatureView(signature: { id: string; versionId: string; signerName: string; role: string; status: string; signedAt: Date | null; evidence: Record<string, unknown>; createdAt: Date }) {
+export function signatureView(signature: { id: string; versionId: string; signerName: string; signerUserId: string | null; role: string; status: string; signedAt: Date | null; evidence: Record<string, unknown>; createdAt: Date }) {
   return {
     id: signature.id, versionId: signature.versionId, signerName: signature.signerName,
+    signerUserId: signature.signerUserId ?? null,
     role: signature.role, status: signature.status,
     signedAt: signature.signedAt ? signature.signedAt.toISOString() : null,
     evidence: signature.evidence, createdAt: signature.createdAt.toISOString(),
