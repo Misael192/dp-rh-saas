@@ -9,13 +9,32 @@ O usuário autorizou iniciar/transferir o projeto para `Misael192/dp-rh-saas`: �
 ## Local atual e procedência
 
 - Repositório principal da plataforma: https://github.com/Misael192/dp-rh-saas.
-- Checkout atual: `/workspace/dp-rh-saas`, branch `main`.
+- Checkout desta verificação: `/workspaces/dp-rh-saas`, branch `hotfix/stage2-typecheck-and-docs`; não confundir com os checkouts históricos descritos abaixo.
 - O destino continha somente README no commit inicial `3ab170421a640ded40de4d5797fe1f2568c3b303`.
 - A plataforma foi transferida da pasta `platform/` do checkout `Misael192/Misael192.github.io`, cuja base é `8de21c6db752eb2bd4611f757d78aeb4e09f29e9` (consulte o registro histórico para a revisão completa). A implementação local da Etapa 1 ainda não tinha commit nesse repositório.
 - Fontes agora na raiz: `apps/api`, `apps/web`, `packages/contracts`, `packages/database`, `scripts`, `tests`, `infra`. Todos os comandos npm usam a raiz. Não criar outro `platform/`.
 - O legado PHP/Laravel e MVP continuam no repositório anterior, preservados. Nenhum merge de branch do Claude nem importação de dados foi feito.
 - Registro anterior preservado integralmente em [history/2026-10-10-original-workspace.md](history/2026-10-10-original-workspace.md). Caminhos/configuração daquele registro são históricos, não instruções atuais.
 - Decisão de transferência: [ADR-011](../adr/ADR-011-repositorio-dp-rh-saas.md).
+
+## Diagnóstico do estado real do repositório (2026-10-16)
+
+Inspeção executada nesta cópia do checkout: o repositório não está vazio e já contém a plataforma PeopleFlow em TypeScript/Node, com `apps/api` (NestJS), `apps/web` (Next.js 15), `packages/contracts`, `packages/database` e infraestrutura em `infra/`. O projeto mantém a arquitetura indicada no README e no registro de continuidade, não sendo mais um scaffold vazio. A execução local confirmada nesta sessão mostrou `npm test` com 23/23 testes unitários passando, e o workspace principal define `npm run build`, `npm run typecheck`, `npm test`, `npm run test:integration`, `npm run dev:api` e `npm run dev:web`.
+
+Evidências observadas: `package.json` usa workspaces, Node >=22 <25, build/typecheck/test scripts raiz, `apps/api` e `apps/web` com suas dependências, Prisma schema em `packages/database` e documentação organizada em `docs/implementation/`. O estado atual é compatível com a entrega da Etapa 1 e com o hotfix da Etapa 2 já em branch separado, sem aprovação explícita para prosseguir para a próxima etapa.
+
+Decisão registrada: a fase seguinte (Etapa 2 / módulos de documentos/storage ou qualquer avanço além da base já validada) permanece bloqueada até nova autorização explícita do usuário. Nenhum módulo planejado foi marcado como implementado nesta sessão e nenhum merge/prod deployment foi autorizado.
+
+### Verificação adicional no checkout atual (2026-10-16)
+
+- Checkout `/workspaces/dp-rh-saas`, branch `hotfix/stage2-typecheck-and-docs`, HEAD `79261774856b06dd7197599ec2d9f7e105fa558f`, alinhado com `origin/hotfix/stage2-typecheck-and-docs` no início/fim da verificação. Node `v24.21.0`, npm `11.19.0`; `node_modules` presente.
+- `npm test`: PASS, 23 testes em 2 arquivos.
+- `npm run typecheck`: PASS em API, web, contracts e database.
+- `npm run build`: PASS; Prisma Client gerado, contratos/API compilados e Next.js 15.5.27 compilado e otimizado.
+- Não executados: integração PostgreSQL/Redis, provisionamento, migrações, seed e E2E. Não há `.env` nem variáveis `TEST_DATABASE_URL`, `TEST_DATABASE_ADMIN_URL` ou `TEST_REDIS_URL` neste checkout; não foi acessado banco algum. Os resultados locais não comprovam RLS.
+- O CI remoto mais recente observado na PR #2 (`38117145810`) falhou na suíte de integração Stage 2: 2 falhas e 27 testes aprovados. Uma expectativa de `signerName` diverge do retorno (`Ana Pessoa`/`Pessoa de teste`) e outra espera HTTP 200, recebendo 201. O workflow do commit atual de `main` também havia falhado no typecheck, conforme o run `38112799294`. Não houve nova execução de CI nesta verificação.
+- A conexão pública de leitura com o GitHub funcionou por HTTPS/Git. `gh` não está autenticado neste ambiente; permissões de escrita não foram confirmadas.
+- Nenhum arquivo de aplicação, dependência ou lockfile foi alterado nesta verificação. O arquivo de continuidade já tinha alterações locais antes do início; `.vscode/` também estava não rastreado. Ambos foram preservados. Este registro recebeu apenas esta atualização de evidências.
 
 ## Implementado — Etapa 1
 
@@ -81,4 +100,4 @@ O workflow foi adaptado à raiz e validado sintaticamente, mas ainda não teve e
 
 ## Próximo passo exato
 
-**Publicar o ajuste de ordenação do teste Stage 2 e aguardar CI remota verde, revisão e aprovação explícita para merge do PR de hotfix da Etapa 2.** Não fazer merge nem iniciar a Etapa 3 antes de autorização. Preserve o histórico e todas as alterações locais. Antes de qualquer implantação de produção, confirmar CI, credenciais/ingresso, backup externo, restauração e operação no destino definitivo. Não marcar módulos planejados como entregues.
+**Concluir o relatório da Etapa 1 e aguardar aprovação explícita do usuário antes de iniciar qualquer trabalho da Etapa 2.** O PR #2 de hotfix da Etapa 2 permanece aberto e seu CI mais recente falhou em dois testes de integração; não fazer merge nem publicar alterações sem autorização. Preserve o histórico e todas as alterações locais. Antes de qualquer implantação de produção, confirmar CI, credenciais/ingresso, backup externo, restauração e operação no destino definitivo. Não marcar módulos planejados como entregues.
