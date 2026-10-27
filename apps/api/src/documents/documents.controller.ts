@@ -121,7 +121,8 @@ export class DocumentsController {
     return this.documents.createSignature(user, validated(documentIdSchema, id), validated(createSignatureSchema, body));
   }
 
-  @Post('signatures/:signatureId/sign')
+  /** A successful signing returns 200 (state transition, not resource creation). */
+  @Post('signatures/:signatureId/sign') @HttpCode(200)
   sign(@CurrentUser() user: AuthUser, @Param('signatureId') signatureId: string, @Body() body: unknown) {
     const parsed = validated(signDocumentSchema, body ?? {});
     return this.documents.sign(user, validated(documentIdSchema, signatureId), parsed.evidence ?? {});

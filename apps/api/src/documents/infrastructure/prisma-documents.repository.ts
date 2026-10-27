@@ -220,7 +220,17 @@ export class PrismaDocumentsRepository extends DocumentsRepository {
           const signer = await tx.user.findFirst({ where: { tenantId: actor.tenantId, companyId: actor.companyId, id: data.signerUserId, isActive: true }, select: { id: true } });
           if (!signer) throw new NotFoundInScopeError('signer');
         }
-        // When signing on behalf of a platform user, the name is taken from that user's record.
+        // When signing on behalf of an employee account, the authoritative name is the
+        // employee's full name; it takes precedence over any staff-supplied signerName.
+        if (data.role === 'EMPLOYEE' && data.signerUserId) {
+          const employee = await tx.employee.findFirst({
+            where: { tenantId: actor.tenantId, companyId: actor.companyId, userId: data.signerUserId },
+            select: { fullName: true },
+          });
+          if (employee) data.signerName = employee.fullName;
+        }
+        // Otherwise the staff-provided name wins; when signing on behalf of a platform
+        // user without one, the name is taken from that user's record.
         const signerName = data.signerName ?? (data.signerUserId
           ? await tx.user.findFirst({ where: { tenantId: actor.tenantId, companyId: actor.companyId, id: data.signerUserId }, select: { name: true } }).then((user) => user?.name ?? 'Assinante')
           : 'Assinante');
